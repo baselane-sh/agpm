@@ -37,3 +37,18 @@ export interface ScannedUnit {
 export interface ScanResult {
   units: ScannedUnit[]; // sorted by kind then name
 }
+
+export type FindingCode = "missing" | "drifted" | "split" | "unsynced" | "unlisted";
+
+export interface Finding {
+  level: "fail" | "warn";
+  kind: Kind;
+  name: string;
+  code: FindingCode;
+  message: string;
+}
+
+export interface CheckResult {
+  findings: Finding[]; // sorted by kind then name
+  exitCode: 0 | 1;
+}
