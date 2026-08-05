@@ -1,4 +1,5 @@
 import { AgpmError } from "./errors.js";
+import { isRegistryProvenance } from "./registryRef.js";
 import { KINDS, type ExtendsRef, type Kind, type Manifest } from "./types.js";
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -20,6 +21,7 @@ export function parseExtendsValue(value: string): ExtendsRef | undefined {
 
 export function isProvenance(value: string): boolean {
   if (value === "local" || value === "unknown") return true;
+  if (value.startsWith("registry:")) return isRegistryProvenance(value);
   if (!value.startsWith("github:")) return false;
   const segments = value.slice("github:".length).split("/");
   if (segments.length < 2) return false;
@@ -98,7 +100,7 @@ function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string
     }
     if (typeof value !== "string" || !isProvenance(value)) {
       throw new AgpmError(
-        `${filePath}: ${kind}/${name} provenance must be "local", "unknown", or "github:owner/repo[/path]" with no @ref`,
+        `${filePath}: ${kind}/${name} provenance must be "local", "unknown", "github:owner/repo[/path]", or "registry:@org/name@version"`,
       );
     }
     out[name] = value;

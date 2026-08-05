@@ -68,6 +68,19 @@ describe("parseManifest", () => {
     const bad = JSON.stringify({ version: 1, skills: { a: "github:o/r/../../x" } });
     expect(() => parseManifest(bad, "harness.json")).toThrow(/provenance/);
   });
+
+  it("accepts a registry provenance", () => {
+    const text = JSON.stringify({ version: 1, skills: { tdd: "registry:@baselane/tdd@1.2.0" } });
+    const m = parseManifest(text, "harness.json");
+    expect(m.skills["tdd"]).toBe("registry:@baselane/tdd@1.2.0");
+  });
+
+  it("rejects a broken registry provenance with the updated message", () => {
+    const bad = JSON.stringify({ version: 1, skills: { tdd: "registry:@baselane/tdd" } });
+    expect(() => parseManifest(bad, "harness.json")).toThrow(
+      /provenance must be "local", "unknown", "github:owner\/repo\[\/path\]", or "registry:@org\/name@version"/,
+    );
+  });
 });
 
 describe("serializeManifest", () => {
@@ -131,5 +144,15 @@ describe("isProvenance", () => {
   it("rejects an empty path segment", () => {
     expect(isProvenance("github:o/r//x")).toBe(false);
     expect(isProvenance("github:o")).toBe(false);
+  });
+
+  it("accepts registry provenance, including the pack-member form", () => {
+    expect(isProvenance("registry:@baselane/tdd@1.2.0")).toBe(true);
+    expect(isProvenance("registry:@baselane/pack@3.0.0/@baselane/tdd@1.2.0")).toBe(true);
+  });
+
+  it("rejects a broken registry provenance", () => {
+    expect(isProvenance("registry:@baselane/tdd")).toBe(false);
+    expect(isProvenance("registry:")).toBe(false);
   });
 });
