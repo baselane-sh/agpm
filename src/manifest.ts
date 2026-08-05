@@ -6,6 +6,10 @@ const PROVENANCE_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/[A-Za-z0-9_./-
 const EXTENDS_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[^\s@]+$/;
 const TOP_KEYS = new Set(["version", "extends", ...KINDS]);
 
+export function isProvenance(value: string): boolean {
+  return value === "local" || value === "unknown" || PROVENANCE_RE.test(value);
+}
+
 export function parseManifest(text: string, filePath: string): Manifest {
   let raw: unknown;
   try {
@@ -57,8 +61,4 @@ function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string
     out[name] = value;
   }
   return out;
-}
-
-function isProvenance(value: string): boolean {
-  return value === "local" || value === "unknown" || PROVENANCE_RE.test(value);
 }
