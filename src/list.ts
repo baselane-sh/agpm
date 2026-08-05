@@ -1,4 +1,4 @@
-import { runCheck } from "./check.js";
+import { nameUnion, runCheck, unitsByName } from "./check.js";
 import { KINDS, type FindingCode, type Lock, type Manifest, type ScanResult } from "./types.js";
 
 const DISPLAY: Record<FindingCode, string> = {
@@ -13,9 +13,8 @@ export function formatList(manifest: Manifest, lock: Lock, scan: ScanResult): st
   const { findings } = runCheck(manifest, lock, scan);
   const lines: string[] = [];
   for (const kind of KINDS) {
-    const units = scan.units.filter((u) => u.kind === kind).map((u) => u.name);
-    const names = new Set([...Object.keys(manifest[kind]), ...Object.keys(lock[kind]), ...units]);
-    for (const name of [...names].sort()) {
+    const units = unitsByName(scan, kind);
+    for (const name of nameUnion(manifest, lock, units, kind)) {
       const finding = findings.find((f) => f.kind === kind && f.name === name);
       const status = finding === undefined ? "ok" : DISPLAY[finding.code];
       const source =

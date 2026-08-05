@@ -2,12 +2,16 @@ import { AgpmError } from "./errors.js";
 import { KINDS, type Kind, type Manifest } from "./types.js";
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PROVENANCE_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/[A-Za-z0-9_./-]+)?$/;
+const PROVENANCE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
 const EXTENDS_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[^\s@]+$/;
 const TOP_KEYS = new Set(["version", "extends", ...KINDS]);
 
 export function isProvenance(value: string): boolean {
-  return value === "local" || value === "unknown" || PROVENANCE_RE.test(value);
+  if (value === "local" || value === "unknown") return true;
+  if (!value.startsWith("github:")) return false;
+  const segments = value.slice("github:".length).split("/");
+  if (segments.length < 2) return false;
+  return segments.every((seg) => seg !== "." && seg !== ".." && PROVENANCE_SEGMENT_RE.test(seg));
 }
 
 export function parseManifest(text: string, filePath: string): Manifest {
@@ -41,6 +45,33 @@ export function parseManifest(text: string, filePath: string): Manifest {
     sections[kind] = parseSection(obj[kind], kind, filePath);
   }
   return { version: 1, ...(ext === undefined ? {} : { extends: ext }), ...sections };
+}
+
+export function isValidName(name: string): boolean {
+  return NAME_RE.test(name);
+}
+
+export function emptyManifest(): Manifest {
+  return {
+    version: 1,
+    skills: Object.create(null) as Record<string, string>,
+    agents: Object.create(null) as Record<string, string>,
+    commands: Object.create(null) as Record<string, string>,
+  };
+}
+
+export function serializeManifest(manifest: Manifest): string {
+  const out: Record<string, unknown> = Object.create(null);
+  out["version"] = 1;
+  if (manifest.extends !== undefined) out["extends"] = manifest.extends;
+  for (const kind of KINDS) {
+    const section: Record<string, string> = Object.create(null);
+    for (const name of Object.keys(manifest[kind]).sort()) {
+      section[name] = manifest[kind][name]!;
+    }
+    out[kind] = section;
+  }
+  return JSON.stringify(out, null, 2) + "\n";
 }
 
 function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string, string> {

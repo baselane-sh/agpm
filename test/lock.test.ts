@@ -50,3 +50,30 @@ describe("serializeLock", () => {
     expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });
+
+describe("parseLock path-key validation", () => {
+  const H = "sha256:" + "0".repeat(64);
+  const withDirs = (dirs: string[]) =>
+    JSON.stringify({ version: 1, skills: { a: { source: "local", dirs, files: { "SKILL.md": H } } } });
+  const withFileKey = (rel: string) =>
+    JSON.stringify({ version: 1, skills: { a: { source: "local", dirs: [".claude/skills"], files: { [rel]: H } } } });
+
+  it("rejects dirs that escape the repo or use backslashes", () => {
+    expect(() => parseLock(withDirs(["../outside"]), "L")).toThrow(/dirs/);
+    expect(() => parseLock(withDirs(["/absolute"]), "L")).toThrow(/dirs/);
+    expect(() => parseLock(withDirs(["a\\b"]), "L")).toThrow(/dirs/);
+    expect(() => parseLock(withDirs(["./x"]), "L")).toThrow(/dirs/);
+    expect(() => parseLock(withDirs([""]), "L")).toThrow(/dirs/);
+  });
+
+  it("rejects file keys that escape the unit directory", () => {
+    expect(() => parseLock(withFileKey("../x.md"), "L")).toThrow(/files/);
+    expect(() => parseLock(withFileKey("/abs.md"), "L")).toThrow(/files/);
+    expect(() => parseLock(withFileKey("a\\b.md"), "L")).toThrow(/files/);
+    expect(() => parseLock(withFileKey("a//b.md"), "L")).toThrow(/files/);
+  });
+
+  it("still accepts clean nested relative paths", () => {
+    expect(() => parseLock(withFileKey("references/deep/file.md"), "L")).not.toThrow();
+  });
+});

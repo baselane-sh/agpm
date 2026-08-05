@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
@@ -89,7 +89,82 @@ describe("runCli", () => {
   it("unknown command prints usage and exits 2", async () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <check|list>");
+    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>");
+  });
+});
+
+describe("runCli init and sync", () => {
+  it("init writes both files, reports entries, and check passes immediately", async () => {
+    const root = await makeRepo({
+      ".claude/skills/a/SKILL.md": "x",
+      ".claude/agents/planner.md": "p",
+      "skills-lock.json": JSON.stringify({ skills: { "o/r/a": { source: "github:o/r/skills/a" } } }),
+    });
+    const { code, lines } = await run(["init"], root);
+    expect(code).toBe(0);
+    expect(lines).toEqual([
+      "added skills/a (github:o/r/skills/a)",
+      "added agents/planner (local)",
+      "init: 2 entries recorded",
+    ]);
+    const manifest = JSON.parse(await readFile(join(root, "harness.json"), "utf8"));
+    expect(manifest.skills["a"]).toBe("github:o/r/skills/a");
+    const check = await run(["check"], root);
+    expect(check.code).toBe(0);
+  });
+
+  it("init refuses to overwrite an existing harness.json", async () => {
+    const root = await makeRepo({ "harness.json": JSON.stringify({ version: 1 }) });
+    const { code, lines } = await run(["init"], root);
+    expect(code).toBe(2);
+    expect(lines[0]).toContain("already exists");
+  });
+
+  it("sync without harness.json points at init", async () => {
+    const root = await makeRepo({ "README.md": "hi" });
+    const { code, lines } = await run(["sync"], root);
+    expect(code).toBe(2);
+    expect(lines[0]).toContain("run agpm init");
+  });
+
+  it("sync refreshes a tampered entry and check goes green again", async () => {
+    const root = await makeRepo({ ".claude/skills/a/SKILL.md": "x" });
+    await run(["init"], root);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(root, ".claude", "skills", "a", "SKILL.md"), "TAMPERED", "utf8");
+    expect((await run(["check"], root)).code).toBe(1);
+    const sync = await run(["sync"], root);
+    expect(sync.code).toBe(0);
+    expect(sync.lines).toEqual(["updated skills/a (1 file changed)", "sync: 0 added, 1 updated, 0 removed"]);
+    expect((await run(["check"], root)).code).toBe(0);
+  });
+
+  it("sync with nothing to do says so and stays green", async () => {
+    const root = await makeRepo({ ".claude/skills/a/SKILL.md": "x" });
+    await run(["init"], root);
+    const { code, lines } = await run(["sync"], root);
+    expect(code).toBe(0);
+    expect(lines).toEqual(["sync: 0 added, 0 updated, 0 removed"]);
+  });
+
+  it("sync surfaces provenance notes", async () => {
+    const root = await makeRepo({ ".claude/skills/a/SKILL.md": "x" });
+    await run(["init"], root);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(root, "skills-lock.json"), "{nope", "utf8");
+    const { lines } = await run(["sync"], root);
+    expect(lines[0]).toContain("note:");
+  });
+
+  it("sync notes a split skill it cannot reconcile and still exits 0", async () => {
+    const root = await makeRepo({ ".claude/skills/a/SKILL.md": "x" });
+    await run(["init"], root);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(root, ".agents", "skills", "a"), { recursive: true });
+    await writeFile(join(root, ".agents", "skills", "a", "SKILL.md"), "y", "utf8");
+    const { code, lines } = await run(["sync"], root);
+    expect(code).toBe(0);
+    expect(lines.some((l) => l.startsWith("note:") && l.includes("skills/a"))).toBe(true);
   });
 });
 
