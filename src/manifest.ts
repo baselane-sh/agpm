@@ -44,7 +44,7 @@ export function parseManifest(text: string, filePath: string): Manifest {
 }
 
 function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string, string> {
-  if (raw === undefined) return {};
+  if (raw === undefined) return Object.create(null) as Record<string, string>;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new AgpmError(`${filePath}: "${kind}" must be an object of name to provenance`);
   }
