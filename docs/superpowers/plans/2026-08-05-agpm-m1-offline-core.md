@@ -91,6 +91,7 @@ Write `tsconfig.json`:
     "noUncheckedIndexedAccess": true,
     "outDir": "dist",
     "rootDir": "src",
+    "types": ["node"],
     "skipLibCheck": true
   },
   "include": ["src"]
