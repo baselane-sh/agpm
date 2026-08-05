@@ -1,5 +1,5 @@
 {
-  "name": "@baselane-sh/agpm",
+  "name": "@baselane/agpm",
   "version": "0.3.0",
   "publishConfig": {
     "access": "public"
