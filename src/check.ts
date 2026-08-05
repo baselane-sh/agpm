@@ -1,11 +1,18 @@
 import { KINDS, type CheckResult, type Finding, type Kind, type Lock, type Manifest, type ScanResult, type ScannedUnit } from "./types.js";
 
+export function unitsByName(scan: ScanResult, kind: Kind): Map<string, ScannedUnit> {
+  return new Map(scan.units.filter((u) => u.kind === kind).map((u) => [u.name, u]));
+}
+
+export function nameUnion(manifest: Manifest, lock: Lock, units: Map<string, ScannedUnit>, kind: Kind): string[] {
+  return [...new Set([...Object.keys(manifest[kind]), ...Object.keys(lock[kind]), ...units.keys()])].sort();
+}
+
 export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult): CheckResult {
   const findings: Finding[] = [];
   for (const kind of KINDS) {
-    const units = new Map(scan.units.filter((u) => u.kind === kind).map((u) => [u.name, u]));
-    const names = new Set([...Object.keys(manifest[kind]), ...Object.keys(lock[kind]), ...units.keys()]);
-    for (const name of [...names].sort()) {
+    const units = unitsByName(scan, kind);
+    for (const name of nameUnion(manifest, lock, units, kind)) {
       const inManifest = Object.hasOwn(manifest[kind], name);
       const entry = Object.hasOwn(lock[kind], name) ? lock[kind][name] : undefined;
       const unit = units.get(name);

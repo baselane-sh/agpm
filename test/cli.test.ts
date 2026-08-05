@@ -89,7 +89,7 @@ describe("runCli", () => {
   it("unknown command prints usage and exits 2", async () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <init|sync|check|list>");
+    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>");
   });
 });
 

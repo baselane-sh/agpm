@@ -1,5 +1,6 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { formatAudit } from "./audit.js";
 import { runCheck } from "./check.js";
 import { AgpmError } from "./errors.js";
 import { formatList } from "./list.js";
@@ -21,10 +22,12 @@ export async function runCli(argv: string[], cwd: string, write: Writer): Promis
         return await sync(cwd, write);
       case "check":
         return await check(cwd, write);
+      case "audit":
+        return await audit(cwd, write);
       case "list":
         return await list(cwd, write);
       default:
-        write("usage: agpm <init|sync|check|list>");
+        write("usage: agpm <init|sync|check|audit|list>");
         return 2;
     }
   } catch (error) {
@@ -73,6 +76,13 @@ async function check(cwd: string, write: Writer): Promise<number> {
   const warns = result.findings.length - fails;
   write(`check: ${fails} fail, ${warns} warn`);
   return result.exitCode;
+}
+
+async function audit(cwd: string, write: Writer): Promise<number> {
+  const { manifest, lock } = await loadFiles(cwd);
+  const { notes } = await readProvenance(cwd);
+  for (const line of formatAudit(manifest, lock, await scanRepo(cwd), notes)) write(line);
+  return 0;
 }
 
 async function list(cwd: string, write: Writer): Promise<number> {
