@@ -89,7 +89,7 @@ describe("runCli", () => {
   it("unknown command prints usage and exits 2", async () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>");
+    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>; check accepts --strict and --json");
   });
 });
 
@@ -195,5 +195,111 @@ describe("runCli hardening", () => {
     const { code, lines } = await run(["check"], root);
     expect(code).toBe(2);
     expect(lines).toEqual([expect.stringContaining("internal error")]);
+  });
+});
+
+describe("runCli check flags", () => {
+  it("check --json prints one JSON document with findings, summary, exitCode", async () => {
+    const root = await makeRepo({
+      ".claude/skills/a/SKILL.md": "TAMPERED",
+      "harness.json": JSON.stringify({ version: 1, skills: { a: "local" } }),
+      "harness.lock": JSON.stringify({
+        version: 1,
+        skills: {
+          a: {
+            source: "local",
+            dirs: [".claude/skills"],
+            files: { "SKILL.md": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881" },
+          },
+        },
+      }),
+    });
+    const { code, lines } = await run(["check", "--json"], root);
+    expect(code).toBe(1);
+    expect(lines).toHaveLength(1);
+    const doc = JSON.parse(lines[0]!);
+    expect(doc.exitCode).toBe(1);
+    expect(doc.summary).toEqual({ fail: 1, warn: 0 });
+    expect(doc.findings[0]).toMatchObject({ level: "fail", kind: "skills", name: "a", code: "drifted" });
+  });
+
+  it("check --strict fails an unlisted folder", async () => {
+    const root = await makeRepo({
+      ".claude/skills/stray/SKILL.md": "x",
+      "harness.json": JSON.stringify({ version: 1 }),
+      "harness.lock": JSON.stringify({ version: 1 }),
+    });
+    expect((await run(["check"], root)).code).toBe(0);
+    const strict = await run(["check", "--strict"], root);
+    expect(strict.code).toBe(1);
+    expect(strict.lines[0]).toMatch(/^FAIL skills\/stray/);
+  });
+
+  it("rejects an unknown flag with the usage line and exit 2", async () => {
+    const { code, lines } = await run(["check", "--verbose"], await cleanRepo());
+    expect(code).toBe(2);
+    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>; check accepts --strict and --json");
+    const listFlags = await run(["list", "--json"], await cleanRepo());
+    expect(listFlags.code).toBe(2);
+  });
+});
+
+describe("runCli sync with extends", () => {
+  const fakeFetcher = {
+    resolveCommit: async () => "c".repeat(40),
+    fetchManifest: async () =>
+      JSON.stringify({ version: 1, skills: { blessed: "github:acme/tools/skills/blessed" }, agents: {}, commands: {} }),
+  };
+
+  it("pins the policy and stops warning about a parent-approved folder", async () => {
+    const root = await makeRepo({
+      ".claude/skills/blessed/SKILL.md": "x",
+      "harness.json": JSON.stringify({ version: 1, extends: "github:acme/policy@main" }),
+      "harness.lock": JSON.stringify({ version: 1 }),
+    });
+    const sync = await runCli(["sync"], root, () => {}, { extendsFetcher: fakeFetcher });
+    expect(sync).toBe(0);
+    const lock = JSON.parse(await readFile(join(root, "harness.lock"), "utf8"));
+    expect(lock.extendsCommit).toBe("c".repeat(40));
+    expect(lock.extendsManifest.skills["blessed"]).toBe("github:acme/tools/skills/blessed");
+    // the folder was also recorded locally by the scan, so remove the local record
+    // to prove the parent approval alone suppresses the warning
+    const manifest = JSON.parse(await readFile(join(root, "harness.json"), "utf8"));
+    delete manifest.skills["blessed"];
+    delete lock.skills["blessed"];
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(root, "harness.json"), JSON.stringify(manifest), "utf8");
+    await writeFile(join(root, "harness.lock"), JSON.stringify(lock), "utf8");
+    const check = await run(["check"], root);
+    expect(check.code).toBe(0);
+    expect(check.lines).toEqual(["check: 0 fail, 0 warn"]);
+  });
+
+  it("reports the pin in the sync output", async () => {
+    const root = await makeRepo({
+      "harness.json": JSON.stringify({ version: 1, extends: "github:acme/policy@main" }),
+      "harness.lock": JSON.stringify({ version: 1 }),
+    });
+    const lines: string[] = [];
+    const code = await runCli(["sync"], root, (l) => lines.push(l), { extendsFetcher: fakeFetcher });
+    expect(code).toBe(0);
+    expect(lines[0]).toBe(`extends: github:acme/policy@main pinned at ${"c".repeat(12)}`);
+  });
+
+  it("fails loud with exit 2 when resolution fails", async () => {
+    const root = await makeRepo({
+      "harness.json": JSON.stringify({ version: 1, extends: "github:acme/policy@main" }),
+      "harness.lock": JSON.stringify({ version: 1 }),
+    });
+    const failing = {
+      resolveCommit: async () => {
+        throw new (await import("../src/errors.js")).AgpmError("extends github:acme/policy@main: resolve the ref returned 404; if the repo is private, set GITHUB_TOKEN");
+      },
+      fetchManifest: async () => "{}",
+    };
+    const lines: string[] = [];
+    const code = await runCli(["sync"], root, (l) => lines.push(l), { extendsFetcher: failing });
+    expect(code).toBe(2);
+    expect(lines[0]).toContain("404");
   });
 });

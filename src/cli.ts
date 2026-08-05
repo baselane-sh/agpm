@@ -3,31 +3,56 @@ import { join } from "node:path";
 import { formatAudit } from "./audit.js";
 import { runCheck } from "./check.js";
 import { AgpmError } from "./errors.js";
+import { resolveExtends, type ExtendsFetcher } from "./extends.js";
+import { githubExtendsFetcher } from "./github.js";
 import { formatList } from "./list.js";
 import { emptyLock, parseLock, serializeLock } from "./lock.js";
 import { emptyManifest, parseManifest, serializeManifest } from "./manifest.js";
 import { readProvenance } from "./provenance.js";
 import { scanRepo } from "./scan.js";
 import { computeSync, type SyncResult } from "./sync.js";
-import type { Lock, Manifest } from "./types.js";
+import type { Lock, Manifest, ResolvedExtends } from "./types.js";
 
 type Writer = (line: string) => void;
 
-export async function runCli(argv: string[], cwd: string, write: Writer): Promise<number> {
+const USAGE = "usage: agpm <init|sync|check|audit|list>; check accepts --strict and --json";
+
+export interface CliDeps {
+  extendsFetcher?: ExtendsFetcher;
+}
+
+export async function runCli(argv: string[], cwd: string, write: Writer, deps: CliDeps = {}): Promise<number> {
+  const fetcher = deps.extendsFetcher ?? githubExtendsFetcher(process.env);
+  const [command, ...rest] = argv;
   try {
-    switch (argv[0]) {
+    if (command === "check") {
+      let strict = false;
+      let json = false;
+      for (const flag of rest) {
+        if (flag === "--strict") strict = true;
+        else if (flag === "--json") json = true;
+        else {
+          write(USAGE);
+          return 2;
+        }
+      }
+      return await check(cwd, write, { strict, json });
+    }
+    if (rest.length > 0 || command === undefined) {
+      write(USAGE);
+      return 2;
+    }
+    switch (command) {
       case "init":
         return await init(cwd, write);
       case "sync":
-        return await sync(cwd, write);
-      case "check":
-        return await check(cwd, write);
+        return await sync(cwd, write, fetcher);
       case "audit":
         return await audit(cwd, write);
       case "list":
         return await list(cwd, write);
       default:
-        write("usage: agpm <init|sync|check|audit|list>");
+        write(USAGE);
         return 2;
     }
   } catch (error) {
@@ -66,14 +91,18 @@ async function loadFiles(cwd: string): Promise<{ manifest: Manifest; lock: Lock 
   return { manifest, lock };
 }
 
-async function check(cwd: string, write: Writer): Promise<number> {
+async function check(cwd: string, write: Writer, opts: { strict: boolean; json: boolean }): Promise<number> {
   const { manifest, lock } = await loadFiles(cwd);
-  const result = runCheck(manifest, lock, await scanRepo(cwd));
+  const result = runCheck(manifest, lock, await scanRepo(cwd), { strict: opts.strict });
+  const fails = result.findings.filter((f) => f.level === "fail").length;
+  const warns = result.findings.length - fails;
+  if (opts.json) {
+    write(JSON.stringify({ findings: result.findings, summary: { fail: fails, warn: warns }, exitCode: result.exitCode }, null, 2));
+    return result.exitCode;
+  }
   for (const finding of result.findings) {
     write(`${finding.level === "fail" ? "FAIL" : "WARN"} ${finding.kind}/${finding.name}: ${finding.message}`);
   }
-  const fails = result.findings.filter((f) => f.level === "fail").length;
-  const warns = result.findings.length - fails;
   write(`check: ${fails} fail, ${warns} warn`);
   return result.exitCode;
 }
@@ -106,10 +135,15 @@ async function init(cwd: string, write: Writer): Promise<number> {
   return 0;
 }
 
-async function sync(cwd: string, write: Writer): Promise<number> {
+async function sync(cwd: string, write: Writer, fetcher: ExtendsFetcher): Promise<number> {
   const { manifest, lock } = await loadFiles(cwd);
+  let resolved: ResolvedExtends | undefined;
+  if (manifest.extends !== undefined) {
+    resolved = await resolveExtends(manifest.extends, fetcher);
+    write(`extends: ${manifest.extends} pinned at ${resolved.commit.slice(0, 12)}`);
+  }
   const { sources, notes } = await readProvenance(cwd);
-  const result = computeSync(manifest, lock, await scanRepo(cwd), sources);
+  const result = computeSync(manifest, lock, await scanRepo(cwd), sources, resolved);
   await writeResult(cwd, result);
   for (const note of notes) write(`note: ${note}`);
   for (const note of result.notes) write(`note: ${note}`);

@@ -37,6 +37,18 @@ describe("formatAudit", () => {
     expect(lines[0]).toBe("note: could not parse skills-lock.json; ignoring it");
     expect(lines.at(-1)).toBe("audit: 0 entries, 0 out of approval, 0 unapproved");
   });
+
+  it("marks an extends-approved entry with (extends)", () => {
+    const lock = emptyLock();
+    lock.extendsCommit = "a".repeat(40);
+    const sections = Object.create(null) as Record<"skills" | "agents" | "commands", Record<string, string>>;
+    for (const kind of ["skills", "agents", "commands"] as const) sections[kind] = Object.create(null) as Record<string, string>;
+    sections.skills["blessed"] = "github:acme/tools/skills/blessed";
+    lock.extendsManifest = sections;
+    const lines = formatAudit({ version: 1, skills: {}, agents: {}, commands: {} }, lock, scanWith("blessed", "x"), []);
+    expect(lines[0]).toContain("github:acme/tools/skills/blessed (extends)");
+    expect(lines.at(-1)).toContain("0 unapproved");
+  });
 });
 
 describe("runCli audit", () => {

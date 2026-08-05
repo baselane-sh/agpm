@@ -1,4 +1,5 @@
 import { nameUnion, runCheck, unitsByName } from "./check.js";
+import { parentApproval } from "./extends.js";
 import { KINDS, type Lock, type Manifest, type ScanResult } from "./types.js";
 
 const OUT_OF_APPROVAL = new Set(["missing", "drifted", "split", "unsynced"]);
@@ -17,7 +18,13 @@ export function formatAudit(manifest: Manifest, lock: Lock, scan: ScanResult, no
       const state = finding === undefined ? "ok" : finding.code;
       if (OUT_OF_APPROVAL.has(state)) outOfApproval++;
       if (state === "unlisted") unapproved++;
-      const source = Object.hasOwn(manifest[kind], name) ? manifest[kind][name]! : "(unapproved)";
+      const parent = parentApproval(lock, kind, name);
+      const source =
+        parent !== undefined
+          ? `${parent} (extends)`
+          : Object.hasOwn(manifest[kind], name)
+            ? manifest[kind][name]!
+            : "(unapproved)";
       const unit = units.get(name);
       const where = unit === undefined
         ? "(not on disk)"
