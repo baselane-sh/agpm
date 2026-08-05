@@ -22,3 +22,18 @@ export interface Lock {
   agents: Record<string, LockEntry>;
   commands: Record<string, LockEntry>;
 }
+
+export interface ScannedLocation {
+  dir: string; // repo-relative, e.g. ".claude/skills"
+  files: Record<string, string>; // relpath inside the unit -> "sha256:..."
+}
+
+export interface ScannedUnit {
+  kind: Kind;
+  name: string;
+  locations: ScannedLocation[]; // 1 or 2 (skills can live in both dirs)
+}
+
+export interface ScanResult {
+  units: ScannedUnit[]; // sorted by kind then name
+}
