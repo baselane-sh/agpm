@@ -10,12 +10,13 @@ People install skills with any tool they like: `npx skills`, marketplaces, git, 
 
 ## Quick start
 
-Not yet on npm. From a checkout:
+Published on npm as [`@baselane/agpm`](https://www.npmjs.com/package/@baselane/agpm); the command is `agpm`:
 
-    npm install && npm run build
-    node dist/bin.js init     # scan the repo, draft both files
+    npx @baselane/agpm init     # scan the repo, draft both files
     git add harness.json harness.lock && git commit
-    node dist/bin.js check    # exit 0: clean, 1: violations, 2: internal error
+    npx @baselane/agpm check    # exit 0: clean, 1: violations, 2: internal error
+
+Or install it once with `npm install -g @baselane/agpm` and use `agpm` directly. Node 18 or newer.
 
 ## Commands
 
