@@ -47,6 +47,13 @@ describe("parseManifest", () => {
     expect(() => parseManifest(bad, "harness.json")).toThrow(/extends/);
   });
 
+  it("rejects a dot-segment owner or repo in extends (path traversal guard)", () => {
+    const dotdot = JSON.stringify({ version: 1, extends: "github:../..@main" });
+    expect(() => parseManifest(dotdot, "harness.json")).toThrow(/extends/);
+    const dot = JSON.stringify({ version: 1, extends: "github:./x@main" });
+    expect(() => parseManifest(dot, "harness.json")).toThrow(/extends/);
+  });
+
   it("rejects unknown top-level keys", () => {
     const bad = JSON.stringify({ version: 1, hooks: {} });
     expect(() => parseManifest(bad, "harness.json")).toThrow(/hooks/);

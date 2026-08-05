@@ -19,7 +19,7 @@ export function formatList(manifest: Manifest, lock: Lock, scan: ScanResult): st
       const finding = findings.find((f) => f.kind === kind && f.name === name);
       const status = finding === undefined ? "ok" : DISPLAY[finding.code];
       const source =
-        parentApproval(lock, kind, name) ??
+        parentApproval(manifest, lock, kind, name) ??
         (Object.hasOwn(manifest[kind], name) ? manifest[kind][name] : undefined) ??
         (Object.hasOwn(lock[kind], name) ? lock[kind][name]!.source : undefined) ??
         "unknown";

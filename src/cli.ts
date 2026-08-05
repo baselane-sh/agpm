@@ -101,7 +101,8 @@ async function check(cwd: string, write: Writer, opts: { strict: boolean; json: 
     return result.exitCode;
   }
   for (const finding of result.findings) {
-    write(`${finding.level === "fail" ? "FAIL" : "WARN"} ${finding.kind}/${finding.name}: ${finding.message}`);
+    const label = finding.kind === "extends" ? "extends" : `${finding.kind}/${finding.name}`;
+    write(`${finding.level === "fail" ? "FAIL" : "WARN"} ${label}: ${finding.message}`);
   }
   write(`check: ${fails} fail, ${warns} warn`);
   return result.exitCode;

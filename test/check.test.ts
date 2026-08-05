@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.js";
 import { emptyLock } from "../src/lock.js";
 import { sha256 } from "../src/hash.js";
-import type { Manifest, ScanResult } from "../src/types.js";
+import type { Kind, Manifest, ScanResult } from "../src/types.js";
 
 const manifest = (skills: Record<string, string>): Manifest => ({
   version: 1, skills, agents: {}, commands: {},
@@ -92,10 +92,13 @@ describe("runCheck prototype-name hardening", () => {
 });
 
 describe("runCheck with extends", () => {
-  function lockWithParent(name: string): ReturnType<typeof emptyLock> {
+  const EXT = "github:acme/tools@main";
+
+  function lockWithParent(name: string, ext: string | undefined = EXT): ReturnType<typeof emptyLock> {
     const lock = emptyLock();
+    if (ext !== undefined) lock.extends = ext;
     lock.extendsCommit = "a".repeat(40);
-    const sections = Object.create(null) as Record<"skills" | "agents" | "commands", Record<string, string>>;
+    const sections = Object.create(null) as Record<Kind, Record<string, string>>;
     for (const kind of ["skills", "agents", "commands"] as const) {
       sections[kind] = Object.create(null) as Record<string, string>;
     }
@@ -104,15 +107,86 @@ describe("runCheck with extends", () => {
     return lock;
   }
 
-  it("does not warn for a folder the parent manifest approves", () => {
-    const r = runCheck(manifest({}), lockWithParent("brainstorming"), scanWith("brainstorming", "x"));
+  const manifestWithExtends = (ext = EXT): Manifest => ({ version: 1, extends: ext, skills: {}, agents: {}, commands: {} });
+
+  it("does not warn for a folder the parent manifest approves (fresh pin)", () => {
+    const r = runCheck(manifestWithExtends(), lockWithParent("brainstorming"), scanWith("brainstorming", "x"));
     expect(r.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
 
   it("still warns for a folder neither manifest approves", () => {
-    const r = runCheck(manifest({}), lockWithParent("brainstorming"), scanWith("stray", "x"));
-    expect(r.findings).toEqual([expect.objectContaining({ code: "unlisted", name: "stray" })]);
+    const r = runCheck(manifestWithExtends(), lockWithParent("brainstorming"), scanWith("stray", "x"));
+    expect(r.findings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "unlisted", name: "stray" })]),
+    );
+  });
+
+  it("a stale pin fails extends/unsynced and no longer suppresses the unlisted warning", () => {
+    const r = runCheck(manifestWithExtends("github:acme/other@main"), lockWithParent("brainstorming"), scanWith("brainstorming", "x"));
+    expect(r.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ level: "fail", kind: "extends", name: "", code: "unsynced" }),
+        expect.objectContaining({ level: "warn", code: "unlisted", name: "brainstorming" }),
+      ]),
+    );
+    expect(r.exitCode).toBe(1);
+  });
+});
+
+describe("runCheck extends freshness messages", () => {
+  it("fails when the manifest sets extends but the lock has no pin", () => {
+    const m: Manifest = { version: 1, extends: "github:acme/policy@main", skills: {}, agents: {}, commands: {} };
+    const r = runCheck(m, emptyLock(), { units: [] });
+    expect(r.findings).toEqual([
+      expect.objectContaining({
+        level: "fail",
+        kind: "extends",
+        name: "",
+        code: "unsynced",
+        message: 'extends "github:acme/policy@main" is not pinned in harness.lock; run agpm sync and approve the diff by PR',
+      }),
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("fails when the lock still pins extends the manifest dropped", () => {
+    const lock = emptyLock();
+    lock.extends = "github:acme/policy@main";
+    const r = runCheck(manifest({}), lock, { units: [] });
+    expect(r.findings).toEqual([
+      expect.objectContaining({
+        level: "fail",
+        kind: "extends",
+        name: "",
+        code: "unsynced",
+        message: 'harness.json has no extends but harness.lock still pins "github:acme/policy@main"; run agpm sync and approve the diff by PR',
+      }),
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("fails when the manifest and lock extends values differ", () => {
+    const m: Manifest = { version: 1, extends: "github:acme/policy@main", skills: {}, agents: {}, commands: {} };
+    const lock = emptyLock();
+    lock.extends = "github:acme/other@main";
+    const r = runCheck(m, lock, { units: [] });
+    expect(r.findings).toEqual([
+      expect.objectContaining({
+        level: "fail",
+        kind: "extends",
+        name: "",
+        code: "unsynced",
+        message: 'harness.json extends "github:acme/policy@main" but harness.lock pins "github:acme/other@main"; run agpm sync and approve the diff by PR',
+      }),
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("stays clean when manifest and lock extends agree (both absent)", () => {
+    const r = runCheck(manifest({}), emptyLock(), { units: [] });
+    expect(r.findings).toEqual([]);
+    expect(r.exitCode).toBe(0);
   });
 });
 

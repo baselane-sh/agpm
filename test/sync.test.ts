@@ -144,6 +144,7 @@ describe("computeSync", () => {
     const r = computeSync(m, emptyLock(), { units: [] }, noSources, resolved);
     expect(r.lock.extendsCommit).toBe("b".repeat(40));
     expect(r.lock.extendsManifest?.skills["brainstorming"]).toBe("github:obra/superpowers/skills/brainstorming");
+    expect(r.lock.extends).toBe("github:acme/policy@main");
     expect(r.manifest.extends).toBe("github:acme/policy@main");
   });
 
@@ -161,9 +162,11 @@ describe("computeSync", () => {
 
   it("drops the pin when the manifest no longer extends", () => {
     const l = emptyLock();
+    l.extends = "github:acme/policy@main";
     l.extendsCommit = "a".repeat(40);
     l.extendsManifest = { skills: {}, agents: {}, commands: {} };
     const r = computeSync(emptyManifest(), l, { units: [] }, noSources);
+    expect(r.lock.extends).toBeUndefined();
     expect(r.lock.extendsCommit).toBeUndefined();
     expect(r.lock.extendsManifest).toBeUndefined();
   });
@@ -172,9 +175,11 @@ describe("computeSync", () => {
     const m = emptyManifest();
     m.extends = "github:acme/policy@main";
     const l = emptyLock();
+    l.extends = "github:acme/policy@main";
     l.extendsCommit = "a".repeat(40);
     l.extendsManifest = { skills: { a: "local" }, agents: {}, commands: {} };
     const r = computeSync(m, l, { units: [] }, noSources);
+    expect(r.lock.extends).toBe("github:acme/policy@main");
     expect(r.lock.extendsCommit).toBe("a".repeat(40));
     expect(r.lock.extendsManifest?.skills["a"]).toBe("local");
   });

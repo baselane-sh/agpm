@@ -15,6 +15,15 @@ export interface CheckOptions {
 
 export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult, options: CheckOptions = {}): CheckResult {
   const findings: Finding[] = [];
+  if (manifest.extends !== lock.extends) {
+    findings.push({
+      level: "fail",
+      kind: "extends",
+      name: "",
+      code: "unsynced",
+      message: extendsMismatchMessage(manifest, lock),
+    });
+  }
   for (const kind of KINDS) {
     const units = unitsByName(scan, kind);
     for (const name of nameUnion(manifest, lock, units, kind)) {
@@ -48,7 +57,7 @@ export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult, optio
         continue;
       }
       if (unit !== undefined) {
-        if (parentApproval(lock, kind, name) !== undefined) continue;
+        if (parentApproval(manifest, lock, kind, name) !== undefined) continue;
         findings.push({
           level: options.strict === true ? "fail" : "warn",
           kind,
@@ -71,6 +80,17 @@ function checkSplit(kind: Kind, name: string, unit: ScannedUnit): Finding | unde
     }
   }
   return undefined;
+}
+
+function extendsMismatchMessage(manifest: Manifest, lock: Lock): string {
+  const suffix = "; run agpm sync and approve the diff by PR";
+  if (manifest.extends !== undefined && lock.extends === undefined) {
+    return `extends "${manifest.extends}" is not pinned in harness.lock${suffix}`;
+  }
+  if (manifest.extends === undefined && lock.extends !== undefined) {
+    return `harness.json has no extends but harness.lock still pins "${lock.extends}"${suffix}`;
+  }
+  return `harness.json extends "${manifest.extends}" but harness.lock pins "${lock.extends}"${suffix}`;
 }
 
 function fail(kind: Kind, name: string, code: Finding["code"], message: string): Finding {

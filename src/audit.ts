@@ -18,7 +18,7 @@ export function formatAudit(manifest: Manifest, lock: Lock, scan: ScanResult, no
       const state = finding === undefined ? "ok" : finding.code;
       if (OUT_OF_APPROVAL.has(state)) outOfApproval++;
       if (state === "unlisted") unapproved++;
-      const parent = parentApproval(lock, kind, name);
+      const parent = parentApproval(manifest, lock, kind, name);
       const source =
         parent !== undefined
           ? `${parent} (extends)`

@@ -1,10 +1,22 @@
 import { AgpmError } from "./errors.js";
-import { KINDS, type Kind, type Manifest } from "./types.js";
+import { KINDS, type ExtendsRef, type Kind, type Manifest } from "./types.js";
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PROVENANCE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
-const EXTENDS_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[^\s@]+$/;
+const EXTENDS_RE = /^github:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)@([^\s@]+)$/;
 const TOP_KEYS = new Set(["version", "extends", ...KINDS]);
+
+// Single source of truth for the "github:owner/repo@ref" extends format, shared by
+// parseManifest, parseLock, and parseExtends. Rejects "." and ".." owner/repo segments
+// so a value like "github:../..@main" cannot be turned into a path-traversing API call.
+export function parseExtendsValue(value: string): ExtendsRef | undefined {
+  const m = EXTENDS_RE.exec(value);
+  if (m === null) return undefined;
+  const owner = m[1]!;
+  const repo = m[2]!;
+  if (owner === "." || owner === ".." || repo === "." || repo === "..") return undefined;
+  return { owner, repo, ref: m[3]! };
+}
 
 export function isProvenance(value: string): boolean {
   if (value === "local" || value === "unknown") return true;
@@ -35,7 +47,7 @@ export function parseManifest(text: string, filePath: string): Manifest {
   }
   let ext: string | undefined;
   if (obj["extends"] !== undefined) {
-    if (typeof obj["extends"] !== "string" || !EXTENDS_RE.test(obj["extends"])) {
+    if (typeof obj["extends"] !== "string" || parseExtendsValue(obj["extends"]) === undefined) {
       throw new AgpmError(`${filePath}: extends must look like "github:owner/repo@ref"`);
     }
     ext = obj["extends"];

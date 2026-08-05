@@ -1,5 +1,5 @@
 import { AgpmError } from "./errors.js";
-import { isProvenance, isValidName } from "./manifest.js";
+import { isProvenance, isValidName, parseExtendsValue } from "./manifest.js";
 import { KINDS, type Kind, type Lock, type LockEntry } from "./types.js";
 
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
@@ -29,11 +29,20 @@ export function parseLock(text: string, filePath: string): Lock {
   const obj = raw as Record<string, unknown>;
   if (obj["version"] !== 1) throw new AgpmError(`${filePath}: version must be 1`);
   const lock = emptyLock();
+  if (obj["extends"] !== undefined) {
+    if (typeof obj["extends"] !== "string" || parseExtendsValue(obj["extends"]) === undefined) {
+      throw new AgpmError(`${filePath}: extends must look like "github:owner/repo@ref"`);
+    }
+    lock.extends = obj["extends"];
+  }
   if (obj["extendsCommit"] !== undefined) {
     if (typeof obj["extendsCommit"] !== "string" || !COMMIT_RE.test(obj["extendsCommit"])) {
       throw new AgpmError(`${filePath}: extendsCommit must be a 40 hex commit`);
     }
     lock.extendsCommit = obj["extendsCommit"];
+  }
+  if ((lock.extends === undefined) !== (lock.extendsCommit === undefined)) {
+    throw new AgpmError(`${filePath}: extends and extendsCommit must appear together`);
   }
   if (obj["extendsManifest"] !== undefined) {
     if (lock.extendsCommit === undefined) {

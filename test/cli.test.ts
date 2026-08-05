@@ -260,6 +260,7 @@ describe("runCli sync with extends", () => {
     const sync = await runCli(["sync"], root, () => {}, { extendsFetcher: fakeFetcher });
     expect(sync).toBe(0);
     const lock = JSON.parse(await readFile(join(root, "harness.lock"), "utf8"));
+    expect(lock.extends).toBe("github:acme/policy@main");
     expect(lock.extendsCommit).toBe("c".repeat(40));
     expect(lock.extendsManifest.skills["blessed"]).toBe("github:acme/tools/skills/blessed");
     // the folder was also recorded locally by the scan, so remove the local record
@@ -284,6 +285,16 @@ describe("runCli sync with extends", () => {
     const code = await runCli(["sync"], root, (l) => lines.push(l), { extendsFetcher: fakeFetcher });
     expect(code).toBe(0);
     expect(lines[0]).toBe(`extends: github:acme/policy@main pinned at ${"c".repeat(12)}`);
+  });
+
+  it("check prints FAIL extends without a slash when harness.json and harness.lock disagree about extends", async () => {
+    const root = await makeRepo({
+      "harness.json": JSON.stringify({ version: 1, extends: "github:acme/policy@main", skills: {} }),
+    });
+    const { code, lines } = await run(["check"], root);
+    expect(code).toBe(1);
+    expect(lines[0]).toMatch(/^FAIL extends: /);
+    expect(lines[0]).not.toContain("extends/");
   });
 
   it("fails loud with exit 2 when resolution fails", async () => {

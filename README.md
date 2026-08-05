@@ -35,7 +35,9 @@ One org policy repo can approve skills for every repo that points at it:
 
     { "version": 1, "extends": "github:acme/policy@main", "skills": {} }
 
-`agpm sync` resolves the ref to a commit, reads the policy repo's harness.json at that commit, and pins both into harness.lock (`extendsCommit`, `extendsManifest`). `check`, `audit`, and `list` work offline from the pin. A folder the policy manifest lists is approved; the policy wins over the local entry when both name the same unit. Only `sync` touches the network. Private policy repos work when `GITHUB_TOKEN` (or `GH_TOKEN`) is set. A policy repo that itself extends another repo is refused.
+`agpm sync` resolves the ref to a commit, reads the policy repo's harness.json at that commit, and pins the extends value itself alongside the resolved commit and parent manifest into harness.lock (`extends`, `extendsCommit`, `extendsManifest`). `check`, `audit`, and `list` work offline from the pin. A folder the policy manifest lists is approved; the policy wins over the local entry when both name the same unit. Only `sync` touches the network. Private policy repos work when `GITHUB_TOKEN` (or `GH_TOKEN`) is set. A policy repo that itself extends another repo is refused.
+
+If harness.json and harness.lock disagree about extends (removed, added, or changed without running sync), `check` fails offline with a FAIL extends finding and stops treating the stale pin as approval. Run `agpm sync` and approve the diff by PR to clear it.
 
 ## What check proves, honestly
 

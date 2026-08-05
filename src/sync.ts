@@ -37,9 +37,11 @@ export function computeSync(
   const lock = emptyLock();
   if (prev.extends !== undefined) {
     if (resolvedExtends !== undefined) {
+      lock.extends = prev.extends;
       lock.extendsCommit = resolvedExtends.commit;
       lock.extendsManifest = copySections(resolvedExtends.sections);
     } else {
+      if (prevLock.extends !== undefined) lock.extends = prevLock.extends;
       if (prevLock.extendsCommit !== undefined) lock.extendsCommit = prevLock.extendsCommit;
       if (prevLock.extendsManifest !== undefined) lock.extendsManifest = copySections(prevLock.extendsManifest);
     }

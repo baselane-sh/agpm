@@ -10,7 +10,12 @@ const entry = {
 
 describe("parseLock", () => {
   it("parses a valid lock", () => {
-    const text = JSON.stringify({ version: 1, extendsCommit: "b".repeat(40), skills: { brainstorming: entry } });
+    const text = JSON.stringify({
+      version: 1,
+      extends: "github:acme/policy@main",
+      extendsCommit: "b".repeat(40),
+      skills: { brainstorming: entry },
+    });
     const lock = parseLock(text, "harness.lock");
     expect(lock.skills["brainstorming"]?.files["SKILL.md"]).toBe(`sha256:${HEX}`);
     expect(lock.agents).toEqual({});
@@ -81,6 +86,7 @@ describe("parseLock path-key validation", () => {
 describe("extendsManifest", () => {
   const pin = {
     version: 1,
+    extends: "github:acme/policy@main",
     extendsCommit: "a".repeat(40),
     extendsManifest: { skills: { brainstorming: "github:obra/superpowers/skills/brainstorming" }, agents: {}, commands: {} },
     skills: {},
@@ -96,7 +102,7 @@ describe("extendsManifest", () => {
   });
 
   it("rejects extendsManifest without extendsCommit", () => {
-    const bad = { ...pin, extendsCommit: undefined };
+    const bad = { ...pin, extends: undefined, extendsCommit: undefined };
     expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extendsManifest requires extendsCommit/);
   });
 
@@ -110,5 +116,44 @@ describe("extendsManifest", () => {
   it("rejects unknown keys inside extendsManifest", () => {
     const bad = { ...pin, extendsManifest: { skills: {}, agents: {}, commands: {}, hooks: {} } };
     expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/hooks/);
+  });
+});
+
+describe("extends pin", () => {
+  const base = {
+    version: 1,
+    extends: "github:acme/policy@main",
+    extendsCommit: "a".repeat(40),
+    skills: {},
+    agents: {},
+    commands: {},
+  };
+
+  it("accepts the full trio: extends, extendsCommit, extendsManifest", () => {
+    const withManifest = { ...base, extendsManifest: { skills: {}, agents: {}, commands: {} } };
+    const lock = parseLock(JSON.stringify(withManifest), "harness.lock");
+    expect(lock.extends).toBe("github:acme/policy@main");
+    expect(lock.extendsCommit).toBe("a".repeat(40));
+    expect(lock.extendsManifest?.skills).toEqual({});
+  });
+
+  it("rejects extends without extendsCommit", () => {
+    const bad = { ...base, extendsCommit: undefined };
+    expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extends and extendsCommit must appear together/);
+  });
+
+  it("rejects extendsCommit without extends", () => {
+    const bad = { ...base, extends: undefined };
+    expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extends and extendsCommit must appear together/);
+  });
+
+  it("rejects a malformed extends value", () => {
+    const bad = { ...base, extends: "not-github" };
+    expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extends must look like "github:owner\/repo@ref"/);
+  });
+
+  it("rejects a dot-segment owner or repo in extends (path traversal guard)", () => {
+    const bad = { ...base, extends: "github:../..@main" };
+    expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extends must look like "github:owner\/repo@ref"/);
   });
 });

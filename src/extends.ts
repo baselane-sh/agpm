@@ -1,27 +1,22 @@
 import { AgpmError } from "./errors.js";
-import { parseManifest } from "./manifest.js";
-import { KINDS, type Kind, type Lock, type ResolvedExtends } from "./types.js";
+import { parseExtendsValue, parseManifest } from "./manifest.js";
+import { KINDS, type ExtendsRef, type Kind, type Lock, type Manifest, type ResolvedExtends } from "./types.js";
 
-export interface ExtendsRef {
-  owner: string;
-  repo: string;
-  ref: string;
-}
+export type { ExtendsRef } from "./types.js";
 
 export interface ExtendsFetcher {
   resolveCommit(ref: ExtendsRef): Promise<string>;
   fetchManifest(ref: ExtendsRef, commit: string): Promise<string>;
 }
 
-const EXTENDS_PARSE_RE = /^github:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)@([^\s@]+)$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
 
 export function parseExtends(value: string): ExtendsRef {
-  const m = EXTENDS_PARSE_RE.exec(value);
-  if (m === null) {
+  const ref = parseExtendsValue(value);
+  if (ref === undefined) {
     throw new AgpmError(`extends must look like "github:owner/repo@ref", got "${value}"`);
   }
-  return { owner: m[1]!, repo: m[2]!, ref: m[3]! };
+  return ref;
 }
 
 export async function resolveExtends(value: string, fetcher: ExtendsFetcher): Promise<ResolvedExtends> {
@@ -48,7 +43,11 @@ export async function resolveExtends(value: string, fetcher: ExtendsFetcher): Pr
   return { commit, sections };
 }
 
-export function parentApproval(lock: Lock, kind: Kind, name: string): string | undefined {
+export function parentApproval(manifest: Manifest, lock: Lock, kind: Kind, name: string): string | undefined {
+  // Freshness gate: a pin only suppresses the unlisted warning while it still matches the
+  // manifest's current extends value. If harness.json's extends was added, removed, or
+  // changed without running sync, the pin is stale and grants no approval.
+  if (manifest.extends !== lock.extends) return undefined;
   const section = lock.extendsManifest?.[kind];
   if (section !== undefined && Object.hasOwn(section, name)) return section[name];
   return undefined;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseExtends, parentApproval, resolveExtends, type ExtendsFetcher, type ExtendsRef } from "../src/extends.js";
 import { emptyLock } from "../src/lock.js";
-import type { Kind } from "../src/types.js";
+import type { Kind, Manifest } from "../src/types.js";
 
 const parentManifest = JSON.stringify({
   version: 1,
@@ -25,6 +25,11 @@ describe("parseExtends", () => {
   it("rejects anything that is not github:owner/repo@ref", () => {
     expect(() => parseExtends("gitlab:acme/policy@main")).toThrow(/github:owner\/repo@ref/);
     expect(() => parseExtends("github:acme@main")).toThrow(/github:owner\/repo@ref/);
+  });
+
+  it("rejects a dot-segment owner or repo (path traversal guard)", () => {
+    expect(() => parseExtends("github:../..@main")).toThrow(/github:owner\/repo@ref/);
+    expect(() => parseExtends("github:./x@main")).toThrow(/github:owner\/repo@ref/);
   });
 });
 
@@ -51,8 +56,13 @@ describe("resolveExtends", () => {
 });
 
 describe("parentApproval", () => {
+  const EXT = "github:acme/policy@main";
+  const manifestWith = (ext: string): Manifest => ({ version: 1, extends: ext, skills: {}, agents: {}, commands: {} });
+
   it("returns the parent source when the pinned manifest lists the name", () => {
+    const manifest = manifestWith(EXT);
     const lock = emptyLock();
+    lock.extends = EXT;
     lock.extendsCommit = "a".repeat(40);
     const sections = Object.create(null) as Record<Kind, Record<string, string>>;
     for (const kind of ["skills", "agents", "commands"] as const) {
@@ -60,19 +70,49 @@ describe("parentApproval", () => {
     }
     sections.skills["brainstorming"] = "github:obra/superpowers/skills/brainstorming";
     lock.extendsManifest = sections;
-    expect(parentApproval(lock, "skills", "brainstorming")).toBe("github:obra/superpowers/skills/brainstorming");
-    expect(parentApproval(lock, "skills", "other")).toBeUndefined();
-    expect(parentApproval(emptyLock(), "skills", "brainstorming")).toBeUndefined();
+    expect(parentApproval(manifest, lock, "skills", "brainstorming")).toBe("github:obra/superpowers/skills/brainstorming");
+    expect(parentApproval(manifest, lock, "skills", "other")).toBeUndefined();
+    expect(parentApproval(manifest, emptyLock(), "skills", "brainstorming")).toBeUndefined();
   });
 
   it("treats prototype names as plain data", () => {
+    const manifest = manifestWith(EXT);
     const lock = emptyLock();
+    lock.extends = EXT;
     lock.extendsCommit = "a".repeat(40);
     const sections = Object.create(null) as Record<Kind, Record<string, string>>;
     for (const kind of ["skills", "agents", "commands"] as const) {
       sections[kind] = Object.create(null) as Record<string, string>;
     }
     lock.extendsManifest = sections;
-    expect(parentApproval(lock, "skills", "toString")).toBeUndefined();
+    expect(parentApproval(manifest, lock, "skills", "toString")).toBeUndefined();
+  });
+
+  it("returns undefined when the manifest's extends differs from the lock's pin (stale)", () => {
+    const manifest = manifestWith("github:acme/other@main");
+    const lock = emptyLock();
+    lock.extends = EXT;
+    lock.extendsCommit = "a".repeat(40);
+    const sections = Object.create(null) as Record<Kind, Record<string, string>>;
+    for (const kind of ["skills", "agents", "commands"] as const) {
+      sections[kind] = Object.create(null) as Record<string, string>;
+    }
+    sections.skills["brainstorming"] = "github:obra/superpowers/skills/brainstorming";
+    lock.extendsManifest = sections;
+    expect(parentApproval(manifest, lock, "skills", "brainstorming")).toBeUndefined();
+  });
+
+  it("returns undefined when the manifest has no extends but the lock still pins one", () => {
+    const manifest: Manifest = { version: 1, skills: {}, agents: {}, commands: {} };
+    const lock = emptyLock();
+    lock.extends = EXT;
+    lock.extendsCommit = "a".repeat(40);
+    const sections = Object.create(null) as Record<Kind, Record<string, string>>;
+    for (const kind of ["skills", "agents", "commands"] as const) {
+      sections[kind] = Object.create(null) as Record<string, string>;
+    }
+    sections.skills["brainstorming"] = "github:obra/superpowers/skills/brainstorming";
+    lock.extendsManifest = sections;
+    expect(parentApproval(manifest, lock, "skills", "brainstorming")).toBeUndefined();
   });
 });

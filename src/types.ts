@@ -1,6 +1,12 @@
 export type Kind = "skills" | "agents" | "commands";
 export const KINDS: readonly Kind[] = ["skills", "agents", "commands"];
 
+export interface ExtendsRef {
+  owner: string;
+  repo: string;
+  ref: string;
+}
+
 export interface Manifest {
   version: 1;
   extends?: string; // "github:owner/repo@ref"
@@ -17,6 +23,7 @@ export interface LockEntry {
 
 export interface Lock {
   version: 1;
+  extends?: string; // the manifest extends value this pin was resolved from
   extendsCommit?: string; // 40 lowercase hex
   extendsManifest?: Record<Kind, Record<string, string>>; // parent name -> provenance, pinned at extendsCommit
   skills: Record<string, LockEntry>;
@@ -48,7 +55,7 @@ export type FindingCode = "missing" | "drifted" | "split" | "unsynced" | "unlist
 
 export interface Finding {
   level: "fail" | "warn";
-  kind: Kind;
+  kind: Kind | "extends";
   name: string;
   code: FindingCode;
   message: string;
