@@ -3,7 +3,7 @@ import { computeSync } from "../src/sync.js";
 import { emptyLock } from "../src/lock.js";
 import { emptyManifest } from "../src/manifest.js";
 import { sha256 } from "../src/hash.js";
-import type { Lock, Manifest, ScanResult } from "../src/types.js";
+import type { Lock, Manifest, ResolvedExtends, ScanResult } from "../src/types.js";
 
 const noSources: Record<string, string> = Object.create(null);
 
@@ -132,5 +132,50 @@ describe("computeSync", () => {
   it("emits no note when a split unit's locations agree", () => {
     const r = computeSync(emptyManifest(), emptyLock(), scanWith("a", "x", [".claude/skills", ".agents/skills"]), noSources);
     expect(r.notes).toEqual([]);
+  });
+
+  it("pins extendsCommit and extendsManifest from the resolved extends", () => {
+    const m = emptyManifest();
+    m.extends = "github:acme/policy@main";
+    const resolved: ResolvedExtends = {
+      commit: "b".repeat(40),
+      sections: { skills: { brainstorming: "github:obra/superpowers/skills/brainstorming" }, agents: {}, commands: {} },
+    };
+    const r = computeSync(m, emptyLock(), { units: [] }, noSources, resolved);
+    expect(r.lock.extendsCommit).toBe("b".repeat(40));
+    expect(r.lock.extendsManifest?.skills["brainstorming"]).toBe("github:obra/superpowers/skills/brainstorming");
+    expect(r.manifest.extends).toBe("github:acme/policy@main");
+  });
+
+  it("does not alias the resolved sections into the lock", () => {
+    const m = emptyManifest();
+    m.extends = "github:acme/policy@main";
+    const resolved: ResolvedExtends = {
+      commit: "b".repeat(40),
+      sections: { skills: { a: "local" }, agents: {}, commands: {} },
+    };
+    const r = computeSync(m, emptyLock(), { units: [] }, noSources, resolved);
+    resolved.sections.skills["a"] = "unknown";
+    expect(r.lock.extendsManifest?.skills["a"]).toBe("local");
+  });
+
+  it("drops the pin when the manifest no longer extends", () => {
+    const l = emptyLock();
+    l.extendsCommit = "a".repeat(40);
+    l.extendsManifest = { skills: {}, agents: {}, commands: {} };
+    const r = computeSync(emptyManifest(), l, { units: [] }, noSources);
+    expect(r.lock.extendsCommit).toBeUndefined();
+    expect(r.lock.extendsManifest).toBeUndefined();
+  });
+
+  it("carries the previous pin when extends is set but no resolution was provided", () => {
+    const m = emptyManifest();
+    m.extends = "github:acme/policy@main";
+    const l = emptyLock();
+    l.extendsCommit = "a".repeat(40);
+    l.extendsManifest = { skills: { a: "local" }, agents: {}, commands: {} };
+    const r = computeSync(m, l, { units: [] }, noSources);
+    expect(r.lock.extendsCommit).toBe("a".repeat(40));
+    expect(r.lock.extendsManifest?.skills["a"]).toBe("local");
   });
 });

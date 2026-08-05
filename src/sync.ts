@@ -1,6 +1,15 @@
 import { emptyLock } from "./lock.js";
 import { emptyManifest, isValidName } from "./manifest.js";
-import { KINDS, type Kind, type Lock, type LockEntry, type Manifest, type ScanResult, type ScannedUnit } from "./types.js";
+import {
+  KINDS,
+  type Kind,
+  type Lock,
+  type LockEntry,
+  type Manifest,
+  type ResolvedExtends,
+  type ScanResult,
+  type ScannedUnit,
+} from "./types.js";
 
 export interface SyncChange {
   action: "added" | "updated" | "removed";
@@ -21,11 +30,20 @@ export function computeSync(
   prevLock: Lock,
   scan: ScanResult,
   sources: Record<string, string>,
+  resolvedExtends?: ResolvedExtends,
 ): SyncResult {
   const manifest = emptyManifest();
   if (prev.extends !== undefined) manifest.extends = prev.extends;
   const lock = emptyLock();
-  if (prevLock.extendsCommit !== undefined) lock.extendsCommit = prevLock.extendsCommit;
+  if (prev.extends !== undefined) {
+    if (resolvedExtends !== undefined) {
+      lock.extendsCommit = resolvedExtends.commit;
+      lock.extendsManifest = copySections(resolvedExtends.sections);
+    } else {
+      if (prevLock.extendsCommit !== undefined) lock.extendsCommit = prevLock.extendsCommit;
+      if (prevLock.extendsManifest !== undefined) lock.extendsManifest = copySections(prevLock.extendsManifest);
+    }
+  }
   const changes: SyncChange[] = [];
   const notes: string[] = [];
 
@@ -105,4 +123,16 @@ function sameArray(a: readonly string[], b: readonly string[]): boolean {
 function sameRecord(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && a[k] === b[k]);
+}
+
+function copySections(sections: Record<Kind, Record<string, string>>): Record<Kind, Record<string, string>> {
+  const out = Object.create(null) as Record<Kind, Record<string, string>>;
+  for (const kind of KINDS) {
+    const copy = Object.create(null) as Record<string, string>;
+    for (const name of Object.keys(sections[kind]).sort()) {
+      copy[name] = sections[kind][name]!;
+    }
+    out[kind] = copy;
+  }
+  return out;
 }
