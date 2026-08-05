@@ -1141,7 +1141,7 @@ agpm observes `.claude/skills/`, `.agents/skills/`, `.claude/agents/*.md`, and `
 
 ## What check proves, honestly
 
-`check` proves nothing changed since a human approved it. It does not prove the approved content is safe. `audit` reports facts; it does not score or judge content. Anything agpm cannot attribute is shown as `unknown`.
+`check` proves nothing changed since a human approved it. It does not prove the approved content is safe. `audit` reports facts; it does not score or judge content. Provenance agpm cannot explain from a lockfile is recorded as `local`, not guessed. `audit` shows `(unapproved)` for anything on disk that `harness.json` does not list.
 
 ## Not in this tool
 

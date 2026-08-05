@@ -84,9 +84,18 @@ describe("computeSync", () => {
     expect(m.skills["a"]).toBe("local");
   });
 
-  it("refuses a folder name it could not parse back", () => {
-    expect(() => computeSync(emptyManifest(), emptyLock(), scanWith("__proto__", "x"), noSources))
-      .toThrow(/rename/);
+  it("skips a folder name it could not parse back, with a note, and keeps valid siblings", () => {
+    const scan: ScanResult = {
+      units: [...scanWith("__proto__", "x").units, ...scanWith("good", "y").units],
+    };
+    const r = computeSync(emptyManifest(), emptyLock(), scan, noSources);
+    expect(Object.hasOwn(r.manifest.skills, "__proto__")).toBe(false);
+    expect(Object.hasOwn(r.lock.skills, "__proto__")).toBe(false);
+    expect(r.manifest.skills["good"]).toBe("local");
+    expect(r.changes).toEqual([{ action: "added", kind: "skills", name: "good", detail: "local" }]);
+    expect(r.notes).toHaveLength(1);
+    expect(r.notes[0]).toContain("__proto__");
+    expect(r.notes[0]).toContain("rename");
   });
 
   it("records both dirs and uses the first-sorting location's files", () => {

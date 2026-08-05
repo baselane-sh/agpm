@@ -27,7 +27,7 @@ Not yet on npm. From a checkout:
 | `agpm audit` | Facts view: everything that exists, where it came from, what changed |
 | `agpm list`  | One line per entry: ok, drifted, missing, or unlisted |
 
-agpm observes `.claude/skills/`, `.agents/skills/`, `.claude/agents/*.md`, and `.claude/commands/*.md`. Provenance is read, best effort, from `skills-lock.json` when another tool wrote one; anything unexplained is recorded as `local`, never guessed. A folder whose name agpm cannot record (it must start with a letter or digit and use only letters, digits, dot, dash, underscore) makes `init` and `sync` stop with an error until it is renamed; `check`, `audit`, and `list` still report it.
+agpm observes `.claude/skills/`, `.agents/skills/`, `.claude/agents/*.md`, and `.claude/commands/*.md`. Provenance is read, best effort, from `skills-lock.json` when another tool wrote one; anything unexplained is recorded as `local`, never guessed. A folder whose name agpm cannot record (it must start with a letter or digit and use only letters, digits, dot, dash, underscore) is skipped by `init` and `sync` with a note and stays unapproved; `check`, `audit`, and `list` still report it.
 
 ## What check proves, honestly
 

@@ -1,4 +1,3 @@
-import { AgpmError } from "./errors.js";
 import { emptyLock } from "./lock.js";
 import { emptyManifest, isValidName } from "./manifest.js";
 import { KINDS, type Kind, type Lock, type LockEntry, type Manifest, type ScanResult, type ScannedUnit } from "./types.js";
@@ -38,9 +37,10 @@ export function computeSync(
     }
     for (const [name, unit] of [...units.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
       if (!isValidName(name)) {
-        throw new AgpmError(
-          `cannot record ${kind} name "${name}"; rename the folder to use letters, digits, dot, dash, underscore`,
+        notes.push(
+          `skipped ${kind}/${name}: the name must start with a letter or digit and use only letters, digits, dot, dash, underscore; rename the folder to record it`,
         );
+        continue;
       }
       const splitNote = describeSplit(kind, name, unit);
       if (splitNote !== undefined) notes.push(splitNote);
