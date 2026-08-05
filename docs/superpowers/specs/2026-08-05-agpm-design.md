@@ -37,6 +37,10 @@ Conclusion: do not compete on install (vercel), do not build Claude-Code-only go
 
 `agpm` = agent package manager. Chosen 2026-08-05 after 55 npm registry checks: every 3-letter combo and every common short word is squatted. `agpm` is free on npm, agpm.sh is free, and there is no dev-tool collision on GitHub. Rejected: baselane and reins (owner: hard to memorize), tackroom (name collision), kitbag, sklz.
 
+Name re-confirmed 2026-08-05 after the owner found `@agpm/core` on npm. That is a scoped package in the separate `@agpm` scope namespace, dormant (4 versions in 2 days in January 2026, 27 downloads per month, dead repo link kepler16/agpm). The plain name `agpm` is free. Cost accepted: we can never own the `@agpm` scope. Rejected in the same round: `harn` (taken, unclaimable placeholder), `agentpm` (two same-concept GitHub projects), `harnx`.
+
+Brand (owner, 2026-08-05): **agpm by baselane.** The npm package and the command stay `agpm`. The repo ships under the baselane-sh GitHub org. baselane.sh markets it and keeps the waitlist. The old `baselane` npm package (0.1.x, the archived pack installer) later gets a deprecation notice that points to agpm; that step is owner-gated like every publish.
+
 ## Scope
 
 - One CLI on npm: `npm i -g agpm` or `npx agpm`. Node 20 or newer.
@@ -175,3 +179,5 @@ No installing, copying, updating, or removing of skill folders. No publish and n
 - harness.json records provenance, does not command installs; the hashes in the lock are the guarantee.
 - `extends` merges with parent-wins, pinned to a commit in the lock.
 - Warn (not fail) on unlisted folders by default: adoption first, `--strict` for orgs.
+- Name kept as `agpm` (owner, 2026-08-05): the plain npm name is free; only the dormant `@agpm` scope is taken.
+- Brand is "agpm by baselane" (owner, 2026-08-05): baselane-sh org and baselane.sh site carry it; the old `baselane` npm package gets a deprecation pointer later (owner-gated).
