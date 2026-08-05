@@ -1,6 +1,9 @@
 {
-  "name": "agpm",
+  "name": "@baselane-sh/agpm",
   "version": "0.3.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "The approval and audit layer for agent skills.",
   "type": "module",
   "license": "Apache-2.0",
