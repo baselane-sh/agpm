@@ -6,7 +6,7 @@
 
 **Architecture:** One pure core, `computeSync(manifest, lock, scan, sources)`, produces the new manifest, new lock, and a change list. `init` runs it from empty state; `sync` runs it from the loaded files. `audit` is a read-only formatter over `runCheck` plus provenance notes. The CLI wraps the pure cores with file IO exactly as M1 did. This plan also closes two M1 carry-items first: path-key validation in the lock parser (security) and the README honesty note (last task).
 
-**Tech Stack:** TypeScript strict NodeNext compiled by tsc, Node >= 20, ESM with `.js`-extension relative imports, vitest, zero runtime dependencies.
+**Tech Stack:** TypeScript strict NodeNext compiled by tsc, Node >= 18, ESM with `.js`-extension relative imports, vitest, zero runtime dependencies.
 
 ## Global Constraints
 
