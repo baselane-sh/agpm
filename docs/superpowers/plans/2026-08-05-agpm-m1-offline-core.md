@@ -6,13 +6,13 @@
 
 **Architecture:** Small pure modules (parse, hash, scan, check, list) composed by a thin CLI. The scanner reads the four observed directories; `check` is a pure function over (manifest, lock, scan); the CLI only does IO and dispatch. agpm writes no files in M1.
 
-**Tech Stack:** TypeScript (strict, NodeNext) compiled by tsc to plain JS. Node >= 20. Dev deps: typescript and vitest only. Zero runtime dependencies.
+**Tech Stack:** TypeScript (strict, NodeNext) compiled by tsc to plain JS. Node >= 20. Dev deps: typescript, vitest, and @types/node (types only; tsc needs it to check `node:` builtin imports). Zero runtime dependencies. (Amended 2026-08-05: @types/node added after Task 1 hit TS2591 on `node:crypto` without it.)
 
 ## Global Constraints
 
 Copied from the spec (`docs/superpowers/specs/2026-08-05-agpm-design.md`, commit a0c8825):
 
-- Zero runtime dependencies. `node:crypto` for hashes. No new npm packages beyond dev deps `typescript` and `vitest`.
+- Zero runtime dependencies. `node:crypto` for hashes. No new npm packages beyond dev deps `typescript`, `vitest`, and `@types/node`.
 - Node 20 or newer (`"engines": { "node": ">=20" }`).
 - ESM throughout (`"type": "module"`). Relative imports use the `.js` extension (`import { x } from "./hash.js"`) because tsc emits real JS for npm. Vitest resolves these to the `.ts` sources.
 - agpm never installs, copies, updates, or removes a skill folder. M1 writes no files at all.
@@ -104,7 +104,7 @@ node_modules/
 dist/
 ```
 
-Run: `npm --prefix /Users/mohammad/Desktop/agpm install -D typescript vitest`
+Run: `npm --prefix /Users/mohammad/Desktop/agpm install -D typescript vitest @types/node`
 Expected: installs cleanly, `package-lock.json` created, zero runtime deps in `dependencies`.
 
 - [ ] **Step 2: Write the failing hash tests**

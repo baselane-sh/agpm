@@ -142,7 +142,7 @@ Network use: none, except `sync` resolving `extends` to a commit (one fetch of t
 
 - TypeScript compiled by tsc to plain JS for npm. Node 20 or newer.
 - Zero runtime dependencies: `node:crypto` for hashes, `fetch` only for `extends` resolution.
-- Dev dependencies: typescript and vitest only.
+- Dev dependencies: typescript, vitest, and @types/node (types only, needed so tsc can check `node:` builtin imports). Nothing else.
 - One package, small files, no monorepo.
 - TDD throughout. The scanner and the `extends` fetcher sit behind small interfaces so tests run on local fixtures with no network.
 
