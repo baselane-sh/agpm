@@ -1,3 +1,4 @@
+import { parentApproval } from "./extends.js";
 import { KINDS, type CheckResult, type Finding, type Kind, type Lock, type Manifest, type ScanResult, type ScannedUnit } from "./types.js";
 
 export function unitsByName(scan: ScanResult, kind: Kind): Map<string, ScannedUnit> {
@@ -8,7 +9,11 @@ export function nameUnion(manifest: Manifest, lock: Lock, units: Map<string, Sca
   return [...new Set([...Object.keys(manifest[kind]), ...Object.keys(lock[kind]), ...units.keys()])].sort();
 }
 
-export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult): CheckResult {
+export interface CheckOptions {
+  strict?: boolean;
+}
+
+export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult, options: CheckOptions = {}): CheckResult {
   const findings: Finding[] = [];
   for (const kind of KINDS) {
     const units = unitsByName(scan, kind);
@@ -43,8 +48,14 @@ export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult): Chec
         continue;
       }
       if (unit !== undefined) {
-        findings.push({ level: "warn", kind, name, code: "unlisted",
-          message: `${kind}/${name} exists on disk but nobody approved it in harness.json` });
+        if (parentApproval(lock, kind, name) !== undefined) continue;
+        findings.push({
+          level: options.strict === true ? "fail" : "warn",
+          kind,
+          name,
+          code: "unlisted",
+          message: `${kind}/${name} exists on disk but nobody approved it in harness.json`,
+        });
       }
     }
   }

@@ -90,3 +90,44 @@ describe("runCheck prototype-name hardening", () => {
     expect(r.exitCode).toBe(0);
   });
 });
+
+describe("runCheck with extends", () => {
+  function lockWithParent(name: string): ReturnType<typeof emptyLock> {
+    const lock = emptyLock();
+    lock.extendsCommit = "a".repeat(40);
+    const sections = Object.create(null) as Record<"skills" | "agents" | "commands", Record<string, string>>;
+    for (const kind of ["skills", "agents", "commands"] as const) {
+      sections[kind] = Object.create(null) as Record<string, string>;
+    }
+    sections.skills[name] = "github:acme/tools/skills/" + name;
+    lock.extendsManifest = sections;
+    return lock;
+  }
+
+  it("does not warn for a folder the parent manifest approves", () => {
+    const r = runCheck(manifest({}), lockWithParent("brainstorming"), scanWith("brainstorming", "x"));
+    expect(r.findings).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("still warns for a folder neither manifest approves", () => {
+    const r = runCheck(manifest({}), lockWithParent("brainstorming"), scanWith("stray", "x"));
+    expect(r.findings).toEqual([expect.objectContaining({ code: "unlisted", name: "stray" })]);
+  });
+});
+
+describe("runCheck strict", () => {
+  it("escalates unlisted to fail and exit 1", () => {
+    const r = runCheck(manifest({}), emptyLock(), scanWith("stray", "x"), { strict: true });
+    expect(r.findings).toEqual([
+      expect.objectContaining({ level: "fail", code: "unlisted", name: "stray" }),
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("changes nothing on a clean repo", () => {
+    const r = runCheck(manifest({ a: "local" }), lockWith("a", "x"), scanWith("a", "x"), { strict: true });
+    expect(r.findings).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+});
