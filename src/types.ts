@@ -18,9 +18,15 @@ export interface LockEntry {
 export interface Lock {
   version: 1;
   extendsCommit?: string; // 40 lowercase hex
+  extendsManifest?: Record<Kind, Record<string, string>>; // parent name -> provenance, pinned at extendsCommit
   skills: Record<string, LockEntry>;
   agents: Record<string, LockEntry>;
   commands: Record<string, LockEntry>;
+}
+
+export interface ResolvedExtends {
+  commit: string; // 40 lowercase hex
+  sections: Record<Kind, Record<string, string>>; // parent name -> provenance per kind
 }
 
 export interface ScannedLocation {
