@@ -137,6 +137,27 @@ function sha256Hex(data: Buffer | Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+// Fetch-verify-place path for a single already-known skill version, factored out of
+// runInstall for reuse by agpm update (which resolves its own org/name/version/provenance
+// from an existing registry: manifest entry rather than parsing a ref string).
+export async function installOneSkill(
+  cwd: string,
+  client: RegistryClient,
+  org: string,
+  name: string,
+  version: string,
+  provenance: string,
+): Promise<{ name: string; provenance: string }> {
+  const manifest = await client.getVersionManifest(org, name, version);
+  if (manifest.kind !== "skill") {
+    throw new AgpmError(`registry error invalid_package: @${org}/${name}@${version} is not a skill package`);
+  }
+  const entry = await fetchAndVerify(client, { org, name, version, manifest, provenance });
+  const roots = await targetRoots(cwd);
+  await writeEntry(cwd, roots, entry);
+  return { name: entry.name, provenance: entry.provenance };
+}
+
 async function targetRoots(cwd: string): Promise<string[]> {
   const existing: string[] = [];
   for (const dir of SKILL_ROOTS) {
