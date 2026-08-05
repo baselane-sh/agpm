@@ -454,7 +454,7 @@ export interface SyncChange {
   name: string;
   detail: string; // provenance for added, summary for updated, "" for removed
 }
-export interface SyncResult { manifest: Manifest; lock: Lock; changes: SyncChange[]; }
+export interface SyncResult { manifest: Manifest; lock: Lock; changes: SyncChange[]; notes: string[]; }
 export function computeSync(prev: Manifest, prevLock: Lock, scan: ScanResult, sources: Record<string, string>): SyncResult;
 ```
 
@@ -465,7 +465,7 @@ Behavior spec:
 - A previous manifest entry with no scanned unit: dropped from both files. Change: `removed`, detail `""`.
 - Unchanged entries produce no change record.
 - The lock entry's `source` always equals the manifest value; `dirs` are the unit's location dirs sorted; `files` are the files of the location whose dir sorts first.
-- A scanned name that fails `isValidName` throws `AgpmError` telling the user to rename the folder. agpm must never write a manifest it cannot parse back.
+- A scanned name that fails `isValidName` is skipped with a note telling the user to rename the folder; valid units are still recorded and the command still succeeds. agpm must never write a manifest it cannot parse back.
 - Changes are ordered: for each kind in KINDS order, removed entries first (sorted by name), then added/updated (sorted by name).
 - Inputs are never mutated.
 
@@ -560,9 +560,18 @@ describe("computeSync", () => {
     expect(m.skills["a"]).toBe("local");
   });
 
-  it("refuses a folder name it could not parse back", () => {
-    expect(() => computeSync(emptyManifest(), emptyLock(), scanWith("__proto__", "x"), noSources))
-      .toThrow(/rename/);
+  it("skips a folder name it could not parse back, with a note, and keeps valid siblings", () => {
+    const scan: ScanResult = {
+      units: [...scanWith("__proto__", "x").units, ...scanWith("good", "y").units],
+    };
+    const r = computeSync(emptyManifest(), emptyLock(), scan, noSources);
+    expect(Object.hasOwn(r.manifest.skills, "__proto__")).toBe(false);
+    expect(Object.hasOwn(r.lock.skills, "__proto__")).toBe(false);
+    expect(r.manifest.skills["good"]).toBe("local");
+    expect(r.changes).toEqual([{ action: "added", kind: "skills", name: "good", detail: "local" }]);
+    expect(r.notes).toHaveLength(1);
+    expect(r.notes[0]).toContain("__proto__");
+    expect(r.notes[0]).toContain("rename");
   });
 
   it("records both dirs and uses the first-sorting location's files", () => {
@@ -582,7 +591,6 @@ Expected: FAIL because `src/sync.ts` does not exist.
 Create `src/sync.ts`:
 
 ```ts
-import { AgpmError } from "./errors.js";
 import { emptyLock } from "./lock.js";
 import { emptyManifest, isValidName } from "./manifest.js";
 import { KINDS, type Kind, type Lock, type LockEntry, type Manifest, type ScanResult, type ScannedUnit } from "./types.js";
@@ -611,6 +619,7 @@ export function computeSync(
   const lock = emptyLock();
   if (prevLock.extendsCommit !== undefined) lock.extendsCommit = prevLock.extendsCommit;
   const changes: SyncChange[] = [];
+  const notes: string[] = [];
 
   for (const kind of KINDS) {
     const units = new Map(scan.units.filter((u) => u.kind === kind).map((u) => [u.name, u]));
@@ -619,9 +628,10 @@ export function computeSync(
     }
     for (const [name, unit] of [...units.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
       if (!isValidName(name)) {
-        throw new AgpmError(
-          `cannot record ${kind} name "${name}"; rename the folder to use letters, digits, dot, dash, underscore`,
+        notes.push(
+          `skipped ${kind}/${name}: the name must start with a letter or digit and use only letters, digits, dot, dash, underscore; rename the folder to record it`,
         );
+        continue;
       }
       const source = Object.hasOwn(prev[kind], name)
         ? prev[kind][name]!
@@ -643,7 +653,7 @@ export function computeSync(
       }
     }
   }
-  return { manifest, lock, changes };
+  return { manifest, lock, changes, notes };
 }
 
 function unitToEntry(unit: ScannedUnit, source: string): LockEntry {
