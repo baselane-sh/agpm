@@ -77,3 +77,38 @@ describe("parseLock path-key validation", () => {
     expect(() => parseLock(withFileKey("references/deep/file.md"), "L")).not.toThrow();
   });
 });
+
+describe("extendsManifest", () => {
+  const pin = {
+    version: 1,
+    extendsCommit: "a".repeat(40),
+    extendsManifest: { skills: { brainstorming: "github:obra/superpowers/skills/brainstorming" }, agents: {}, commands: {} },
+    skills: {},
+    agents: {},
+    commands: {},
+  };
+
+  it("round-trips extendsManifest byte-identically", () => {
+    const text = serializeLock(parseLock(JSON.stringify(pin), "harness.lock"));
+    expect(serializeLock(parseLock(text, "harness.lock"))).toBe(text);
+    const lock = parseLock(text, "harness.lock");
+    expect(lock.extendsManifest?.skills["brainstorming"]).toBe("github:obra/superpowers/skills/brainstorming");
+  });
+
+  it("rejects extendsManifest without extendsCommit", () => {
+    const bad = { ...pin, extendsCommit: undefined };
+    expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extendsManifest requires extendsCommit/);
+  });
+
+  it("rejects a bad name and a bad provenance value inside extendsManifest", () => {
+    const badName = { ...pin, extendsManifest: { skills: { "/evil": "local" }, agents: {}, commands: {} } };
+    expect(() => parseLock(JSON.stringify(badName), "harness.lock")).toThrow(/name/);
+    const badValue = { ...pin, extendsManifest: { skills: { ok: "not-a-source" }, agents: {}, commands: {} } };
+    expect(() => parseLock(JSON.stringify(badValue), "harness.lock")).toThrow(/provenance/);
+  });
+
+  it("rejects unknown keys inside extendsManifest", () => {
+    const bad = { ...pin, extendsManifest: { skills: {}, agents: {}, commands: {}, hooks: {} } };
+    expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/hooks/);
+  });
+});

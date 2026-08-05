@@ -1,5 +1,5 @@
 import { AgpmError } from "./errors.js";
-import { isProvenance } from "./manifest.js";
+import { isProvenance, isValidName } from "./manifest.js";
 import { KINDS, type Kind, type Lock, type LockEntry } from "./types.js";
 
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
@@ -34,6 +34,12 @@ export function parseLock(text: string, filePath: string): Lock {
       throw new AgpmError(`${filePath}: extendsCommit must be a 40 hex commit`);
     }
     lock.extendsCommit = obj["extendsCommit"];
+  }
+  if (obj["extendsManifest"] !== undefined) {
+    if (lock.extendsCommit === undefined) {
+      throw new AgpmError(`${filePath}: extendsManifest requires extendsCommit`);
+    }
+    lock.extendsManifest = parseExtendsManifest(obj["extendsManifest"], filePath);
   }
   for (const kind of KINDS) {
     const section = obj[kind];
@@ -88,6 +94,39 @@ function parseEntry(raw: unknown, where: string): LockEntry {
     outFiles[rel] = hash;
   }
   return { source, dirs: [...(dirs as string[])].sort(), files: outFiles };
+}
+
+function parseExtendsManifest(raw: unknown, filePath: string): Record<Kind, Record<string, string>> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new AgpmError(`${filePath}: extendsManifest must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (!KINDS.includes(key as Kind)) {
+      throw new AgpmError(`${filePath}: extendsManifest has unknown key "${key}" (allowed: skills, agents, commands)`);
+    }
+  }
+  const out = Object.create(null) as Record<Kind, Record<string, string>>;
+  for (const kind of KINDS) {
+    const section = Object.create(null) as Record<string, string>;
+    const rawSection = obj[kind];
+    if (rawSection !== undefined) {
+      if (typeof rawSection !== "object" || rawSection === null || Array.isArray(rawSection)) {
+        throw new AgpmError(`${filePath}: extendsManifest.${kind} must be an object`);
+      }
+      for (const [name, value] of Object.entries(rawSection)) {
+        if (!isValidName(name)) {
+          throw new AgpmError(`${filePath}: extendsManifest.${kind} has a bad name "${name}"`);
+        }
+        if (typeof value !== "string" || !isProvenance(value)) {
+          throw new AgpmError(`${filePath}: extendsManifest.${kind}/${name} must be a provenance string`);
+        }
+        section[name] = value;
+      }
+    }
+    out[kind] = section;
+  }
+  return out;
 }
 
 export function serializeLock(lock: Lock): string {
