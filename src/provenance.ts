@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isProvenance } from "./manifest.js";
 
 export interface ProvenanceInfo {
   sources: Record<string, string>;
@@ -7,7 +8,6 @@ export interface ProvenanceInfo {
 }
 
 const LOCK_PATHS = ["skills-lock.json", ".claude/skills-lock.json"];
-const PROVENANCE_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/[A-Za-z0-9_./-]+)?$/;
 const SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
 const CANDIDATE_KEYS = ["source", "repository", "repo", "url"];
 
@@ -63,18 +63,18 @@ export function normalizeGithub(value: string): string | undefined {
   if (value.startsWith("github:")) {
     const at = value.indexOf("@");
     const stripped = at === -1 ? value : value.slice(0, at);
-    return PROVENANCE_RE.test(stripped) ? stripped : undefined;
+    return isProvenance(stripped) ? stripped : undefined;
   }
   const url = value.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/(?:tree|blob)\/[^/]+(?:\/(.+))?)?\/?$/);
   if (url !== null) {
     const [, owner, repo, path] = url;
     const base = `github:${owner}/${repo}${path === undefined ? "" : `/${path}`}`;
-    return PROVENANCE_RE.test(base) ? base : undefined;
+    return isProvenance(base) ? base : undefined;
   }
   const segments = value.split("/");
   if (segments.length >= 2 && segments.every((s) => SEGMENT_RE.test(s))) {
     const bare = `github:${value}`;
-    return PROVENANCE_RE.test(bare) ? bare : undefined;
+    return isProvenance(bare) ? bare : undefined;
   }
   return undefined;
 }

@@ -155,6 +155,17 @@ describe("runCli init and sync", () => {
     const { lines } = await run(["sync"], root);
     expect(lines[0]).toContain("note:");
   });
+
+  it("sync notes a split skill it cannot reconcile and still exits 0", async () => {
+    const root = await makeRepo({ ".claude/skills/a/SKILL.md": "x" });
+    await run(["init"], root);
+    const { writeFile } = await import("node:fs/promises");
+    await mkdir(join(root, ".agents", "skills", "a"), { recursive: true });
+    await writeFile(join(root, ".agents", "skills", "a", "SKILL.md"), "y", "utf8");
+    const { code, lines } = await run(["sync"], root);
+    expect(code).toBe(0);
+    expect(lines.some((l) => l.startsWith("note:") && l.includes("skills/a"))).toBe(true);
+  });
 });
 
 describe("runCli hardening", () => {

@@ -27,11 +27,11 @@ Not yet on npm. From a checkout:
 | `agpm audit` | Facts view: everything that exists, where it came from, what changed |
 | `agpm list`  | One line per entry: ok, drifted, missing, or unlisted |
 
-agpm observes `.claude/skills/`, `.agents/skills/`, `.claude/agents/*.md`, and `.claude/commands/*.md`. Provenance is read, best effort, from `skills-lock.json` when another tool wrote one; anything unexplained is recorded as `local`, never guessed.
+agpm observes `.claude/skills/`, `.agents/skills/`, `.claude/agents/*.md`, and `.claude/commands/*.md`. Provenance is read, best effort, from `skills-lock.json` when another tool wrote one; anything unexplained is recorded as `local`, never guessed. A folder whose name agpm cannot record (it must start with a letter or digit and use only letters, digits, dot, dash, underscore) makes `init` and `sync` stop with an error until it is renamed; `check`, `audit`, and `list` still report it.
 
 ## What check proves, honestly
 
-`check` proves nothing changed since a human approved it. It does not prove the approved content is safe. `audit` reports facts; it does not score or judge content. Anything agpm cannot attribute is shown as `unknown`.
+`check` proves nothing changed since a human approved it. It does not prove the approved content is safe. `audit` reports facts; it does not score or judge content. Provenance agpm cannot explain from a lockfile is recorded as `local`, not guessed. `audit` shows `(unapproved)` for anything on disk that `harness.json` does not list.
 
 ## Not in this tool
 

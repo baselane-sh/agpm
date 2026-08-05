@@ -14,6 +14,7 @@ export interface SyncResult {
   manifest: Manifest;
   lock: Lock;
   changes: SyncChange[];
+  notes: string[];
 }
 
 export function computeSync(
@@ -27,10 +28,12 @@ export function computeSync(
   const lock = emptyLock();
   if (prevLock.extendsCommit !== undefined) lock.extendsCommit = prevLock.extendsCommit;
   const changes: SyncChange[] = [];
+  const notes: string[] = [];
 
   for (const kind of KINDS) {
     const units = new Map(scan.units.filter((u) => u.kind === kind).map((u) => [u.name, u]));
-    for (const name of Object.keys(prev[kind]).sort()) {
+    const removalCandidates = new Set([...Object.keys(prev[kind]), ...Object.keys(prevLock[kind])]);
+    for (const name of [...removalCandidates].sort()) {
       if (!units.has(name)) changes.push({ action: "removed", kind, name, detail: "" });
     }
     for (const [name, unit] of [...units.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
@@ -39,6 +42,8 @@ export function computeSync(
           `cannot record ${kind} name "${name}"; rename the folder to use letters, digits, dot, dash, underscore`,
         );
       }
+      const splitNote = describeSplit(kind, name, unit);
+      if (splitNote !== undefined) notes.push(splitNote);
       const source = Object.hasOwn(prev[kind], name)
         ? prev[kind][name]!
         : kind === "skills" && Object.hasOwn(sources, name)
@@ -59,12 +64,22 @@ export function computeSync(
       }
     }
   }
-  return { manifest, lock, changes };
+  return { manifest, lock, changes, notes };
 }
 
 function unitToEntry(unit: ScannedUnit, source: string): LockEntry {
   const locations = [...unit.locations].sort((a, b) => (a.dir < b.dir ? -1 : 1));
   return { source, dirs: locations.map((l) => l.dir), files: locations[0]!.files };
+}
+
+function describeSplit(kind: Kind, name: string, unit: ScannedUnit): string | undefined {
+  const locations = [...unit.locations].sort((a, b) => (a.dir < b.dir ? -1 : 1));
+  if (locations.length < 2) return undefined;
+  const first = locations[0]!;
+  const differs = locations.slice(1).some((loc) => !sameRecord(first.files, loc.files));
+  if (!differs) return undefined;
+  const dirs = locations.map((l) => l.dir).join(" and ");
+  return `${kind}/${name} differs between ${dirs}; recorded files from ${first.dir}; agpm cannot reconcile the copies`;
 }
 
 function sameEntry(a: LockEntry, b: LockEntry): boolean {

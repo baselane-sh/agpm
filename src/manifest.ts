@@ -2,12 +2,16 @@ import { AgpmError } from "./errors.js";
 import { KINDS, type Kind, type Manifest } from "./types.js";
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PROVENANCE_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/[A-Za-z0-9_./-]+)?$/;
+const PROVENANCE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
 const EXTENDS_RE = /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[^\s@]+$/;
 const TOP_KEYS = new Set(["version", "extends", ...KINDS]);
 
 export function isProvenance(value: string): boolean {
-  return value === "local" || value === "unknown" || PROVENANCE_RE.test(value);
+  if (value === "local" || value === "unknown") return true;
+  if (!value.startsWith("github:")) return false;
+  const segments = value.slice("github:".length).split("/");
+  if (segments.length < 2) return false;
+  return segments.every((seg) => seg !== "." && seg !== ".." && PROVENANCE_SEGMENT_RE.test(seg));
 }
 
 export function parseManifest(text: string, filePath: string): Manifest {

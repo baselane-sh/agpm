@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyManifest, isValidName, parseManifest, serializeManifest } from "../src/manifest.js";
+import { emptyManifest, isProvenance, isValidName, parseManifest, serializeManifest } from "../src/manifest.js";
 
 const ok = JSON.stringify({
   version: 1,
@@ -56,6 +56,11 @@ describe("parseManifest", () => {
     const bad = JSON.stringify({ version: 1, skills: { "../evil": "local" } });
     expect(() => parseManifest(bad, "harness.json")).toThrow(/name/);
   });
+
+  it("rejects provenance with a .. path segment (traversal via an untrusted lockfile)", () => {
+    const bad = JSON.stringify({ version: 1, skills: { a: "github:o/r/../../x" } });
+    expect(() => parseManifest(bad, "harness.json")).toThrow(/provenance/);
+  });
 });
 
 describe("serializeManifest", () => {
@@ -97,5 +102,27 @@ describe("emptyManifest and isValidName", () => {
     expect(isValidName("__proto__")).toBe(false);
     expect(isValidName("../x")).toBe(false);
     expect(isValidName("")).toBe(false);
+  });
+});
+
+describe("isProvenance", () => {
+  it("still accepts the known good shapes", () => {
+    expect(isProvenance("local")).toBe(true);
+    expect(isProvenance("unknown")).toBe(true);
+    expect(isProvenance("github:o/r")).toBe(true);
+    expect(isProvenance("github:o/r/skills/x")).toBe(true);
+    expect(isProvenance("github:obra/superpowers/skills/brainstorming")).toBe(true);
+  });
+
+  it("rejects a . or .. path segment anywhere after github:", () => {
+    expect(isProvenance("github:o/r/../../x")).toBe(false);
+    expect(isProvenance("github:o/../r")).toBe(false);
+    expect(isProvenance("github:./o/r")).toBe(false);
+    expect(isProvenance("github:o/r/.")).toBe(false);
+  });
+
+  it("rejects an empty path segment", () => {
+    expect(isProvenance("github:o/r//x")).toBe(false);
+    expect(isProvenance("github:o")).toBe(false);
   });
 });

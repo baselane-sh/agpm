@@ -21,6 +21,11 @@ describe("normalizeGithub", () => {
     expect(normalizeGithub("github:o")).toBeUndefined();
     expect(normalizeGithub("")).toBeUndefined();
   });
+
+  it("refuses path traversal smuggled through a .. segment", () => {
+    expect(normalizeGithub("https://github.com/o/r/tree/main/../../../etc/passwd")).toBeUndefined();
+    expect(normalizeGithub("o/../../r")).toBeUndefined();
+  });
 });
 
 describe("readProvenance", () => {

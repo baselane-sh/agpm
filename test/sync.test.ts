@@ -94,4 +94,34 @@ describe("computeSync", () => {
     expect(r.lock.skills["a"]!.dirs).toEqual([".agents/skills", ".claude/skills"]);
     expect(r.lock.skills["a"]!.files["SKILL.md"]).toBe(sha256("x"));
   });
+
+  it("removes a lock-only entry that has no manifest entry and no scanned unit", () => {
+    const r = computeSync(emptyManifest(), lockWith("ghost", "x"), { units: [] }, noSources);
+    expect(r.changes).toEqual([{ action: "removed", kind: "skills", name: "ghost", detail: "" }]);
+    expect(Object.keys(r.lock.skills)).toEqual([]);
+  });
+
+  it("emits a note when a unit is split across locations with different bytes", () => {
+    const scan: ScanResult = {
+      units: [
+        {
+          kind: "skills",
+          name: "a",
+          locations: [
+            { dir: ".claude/skills", files: { "SKILL.md": sha256("x") } },
+            { dir: ".agents/skills", files: { "SKILL.md": sha256("y") } },
+          ],
+        },
+      ],
+    };
+    const r = computeSync(emptyManifest(), emptyLock(), scan, noSources);
+    expect(r.notes).toEqual([
+      "skills/a differs between .agents/skills and .claude/skills; recorded files from .agents/skills; agpm cannot reconcile the copies",
+    ]);
+  });
+
+  it("emits no note when a split unit's locations agree", () => {
+    const r = computeSync(emptyManifest(), emptyLock(), scanWith("a", "x", [".claude/skills", ".agents/skills"]), noSources);
+    expect(r.notes).toEqual([]);
+  });
 });

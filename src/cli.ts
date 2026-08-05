@@ -99,6 +99,7 @@ async function init(cwd: string, write: Writer): Promise<number> {
   const { sources } = await readProvenance(cwd);
   const result = computeSync(emptyManifest(), emptyLock(), await scanRepo(cwd), sources);
   await writeResult(cwd, result);
+  for (const note of result.notes) write(`note: ${note}`);
   reportChanges(result.changes, write);
   const n = result.changes.length;
   write(`init: ${n} ${n === 1 ? "entry" : "entries"} recorded`);
@@ -111,6 +112,7 @@ async function sync(cwd: string, write: Writer): Promise<number> {
   const result = computeSync(manifest, lock, await scanRepo(cwd), sources);
   await writeResult(cwd, result);
   for (const note of notes) write(`note: ${note}`);
+  for (const note of result.notes) write(`note: ${note}`);
   reportChanges(result.changes, write);
   const count = (action: string) => result.changes.filter((c) => c.action === action).length;
   write(`sync: ${count("added")} added, ${count("updated")} updated, ${count("removed")} removed`);
