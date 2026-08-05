@@ -43,6 +43,33 @@ export function parseManifest(text: string, filePath: string): Manifest {
   return { version: 1, ...(ext === undefined ? {} : { extends: ext }), ...sections };
 }
 
+export function isValidName(name: string): boolean {
+  return NAME_RE.test(name);
+}
+
+export function emptyManifest(): Manifest {
+  return {
+    version: 1,
+    skills: Object.create(null) as Record<string, string>,
+    agents: Object.create(null) as Record<string, string>,
+    commands: Object.create(null) as Record<string, string>,
+  };
+}
+
+export function serializeManifest(manifest: Manifest): string {
+  const out: Record<string, unknown> = Object.create(null);
+  out["version"] = 1;
+  if (manifest.extends !== undefined) out["extends"] = manifest.extends;
+  for (const kind of KINDS) {
+    const section: Record<string, string> = Object.create(null);
+    for (const name of Object.keys(manifest[kind]).sort()) {
+      section[name] = manifest[kind][name]!;
+    }
+    out[kind] = section;
+  }
+  return JSON.stringify(out, null, 2) + "\n";
+}
+
 function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string, string> {
   if (raw === undefined) return Object.create(null) as Record<string, string>;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
