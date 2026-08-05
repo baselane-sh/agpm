@@ -23,15 +23,23 @@ Not yet on npm. From a checkout:
 |---|---|
 | `agpm init`  | Scan the repo, draft harness.json and harness.lock from what already exists |
 | `agpm sync`  | Re-scan and update both files; the PR carrying the diff is the approval |
-| `agpm check` | CI gate: FAIL on drifted or missing, WARN on unapproved |
+| `agpm check` | CI gate: FAIL on drifted or missing, WARN on unapproved; --strict fails unapproved too, --json prints one JSON document |
 | `agpm audit` | Facts view: everything that exists, where it came from, what changed |
 | `agpm list`  | One line per entry: ok, drifted, missing, or unlisted |
 
 agpm observes `.claude/skills/`, `.agents/skills/`, `.claude/agents/*.md`, and `.claude/commands/*.md`. Provenance is read, best effort, from `skills-lock.json` when another tool wrote one; anything unexplained is recorded as `local`, never guessed. A folder whose name agpm cannot record (it must start with a letter or digit and use only letters, digits, dot, dash, underscore) is skipped by `init` and `sync` with a note and stays unapproved; `check`, `audit`, and `list` still report it.
 
+## Org policy with extends
+
+One org policy repo can approve skills for every repo that points at it:
+
+    { "version": 1, "extends": "github:acme/policy@main", "skills": {} }
+
+`agpm sync` resolves the ref to a commit, reads the policy repo's harness.json at that commit, and pins both into harness.lock (`extendsCommit`, `extendsManifest`). `check`, `audit`, and `list` work offline from the pin. A folder the policy manifest lists is approved; the policy wins over the local entry when both name the same unit. Only `sync` touches the network. Private policy repos work when `GITHUB_TOKEN` (or `GH_TOKEN`) is set. A policy repo that itself extends another repo is refused.
+
 ## What check proves, honestly
 
-`check` proves nothing changed since a human approved it. It does not prove the approved content is safe. `audit` reports facts; it does not score or judge content. Provenance agpm cannot explain from a lockfile is recorded as `local`, not guessed. `audit` shows `(unapproved)` for anything on disk that `harness.json` does not list.
+`check` proves nothing changed since a human approved it. It does not prove the approved content is safe. `audit` reports facts; it does not score or judge content. Provenance agpm cannot explain from a lockfile is recorded as `local`, not guessed. `audit` shows `(unapproved)` for anything on disk that `harness.json` does not list. Parent approvals from extends suppress only the unapproved warning; the sha256 hashes in the local harness.lock stay the only integrity guarantee.
 
 ## Not in this tool
 
