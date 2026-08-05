@@ -1,9 +1,26 @@
 {
   "name": "agpm",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "The approval and audit layer for agent skills.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baselane-sh/agpm.git"
+  },
+  "homepage": "https://github.com/baselane-sh/agpm#readme",
+  "bugs": {
+    "url": "https://github.com/baselane-sh/agpm/issues"
+  },
+  "keywords": [
+    "agent",
+    "skills",
+    "audit",
+    "approval",
+    "lockfile",
+    "claude",
+    "ci"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -16,7 +33,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
