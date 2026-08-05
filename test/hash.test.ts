@@ -32,3 +32,12 @@ describe("hashDir", () => {
     await expect(hashDir(join(root, "skill"))).rejects.toThrow(/symlink/);
   });
 });
+
+describe("hashDir prototype-name hardening", () => {
+  it("includes a file named __proto__ in the hash set", async () => {
+    const root = await makeRepo({ "skill/SKILL.md": "hello", "skill/__proto__": "evil" });
+    const result = await hashDir(join(root, "skill"));
+    expect(result["__proto__"]).toBe(sha256("evil"));
+    expect(Object.keys(result)).toEqual(["SKILL.md", "__proto__"]);
+  });
+});

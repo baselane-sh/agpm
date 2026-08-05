@@ -26,7 +26,8 @@ export async function runCli(argv: string[], cwd: string, write: Writer): Promis
       write(error.message);
       return 2;
     }
-    throw error;
+    write(`internal error: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
   }
 }
 

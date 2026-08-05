@@ -181,3 +181,4 @@ No installing, copying, updating, or removing of skill folders. No publish and n
 - Warn (not fail) on unlisted folders by default: adoption first, `--strict` for orgs.
 - Name kept as `agpm` (owner, 2026-08-05): the plain npm name is free; only the dormant `@agpm` scope is taken.
 - Brand is "agpm by baselane" (owner, 2026-08-05): baselane-sh org and baselane.sh site carry it; the old `baselane` npm package gets a deprecation pointer later (owner-gated).
+- Symlinks are refused, everywhere (M1 review, 2026-08-05): the scanner and the hasher both stop with an error when they meet a symlink inside a scanned directory. A symlink can point outside the repo, so a hash of its target does not prove what the repo contains. If real demand appears, a future flag can relax this; silent skip is never acceptable because it hides files from the unlisted rule.

@@ -18,7 +18,10 @@ export function formatList(manifest: Manifest, lock: Lock, scan: ScanResult): st
     for (const name of [...names].sort()) {
       const finding = findings.find((f) => f.kind === kind && f.name === name);
       const status = finding === undefined ? "ok" : DISPLAY[finding.code];
-      const source = manifest[kind][name] ?? lock[kind][name]?.source ?? "unknown";
+      const source =
+        (Object.hasOwn(manifest[kind], name) ? manifest[kind][name] : undefined) ??
+        (Object.hasOwn(lock[kind], name) ? lock[kind][name]!.source : undefined) ??
+        "unknown";
       lines.push(`${kind.padEnd(9)} ${name.padEnd(30)} ${status.padEnd(9)} ${source}`);
     }
   }

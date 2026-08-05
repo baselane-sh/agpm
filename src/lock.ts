@@ -6,7 +6,14 @@ const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
 
 export function emptyLock(): Lock {
-  return { version: 1, skills: {}, agents: {}, commands: {} };
+  // Null-prototype sections: entry names come from parsed JSON, and names like
+  // "toString" or "__proto__" must behave as plain data keys.
+  return {
+    version: 1,
+    skills: Object.create(null) as Record<string, LockEntry>,
+    agents: Object.create(null) as Record<string, LockEntry>,
+    commands: Object.create(null) as Record<string, LockEntry>,
+  };
 }
 
 export function parseLock(text: string, filePath: string): Lock {
@@ -56,7 +63,7 @@ function parseEntry(raw: unknown, where: string): LockEntry {
   if (typeof files !== "object" || files === null || Array.isArray(files)) {
     throw new AgpmError(`${where}: files must be an object`);
   }
-  const outFiles: Record<string, string> = {};
+  const outFiles: Record<string, string> = Object.create(null);
   for (const [rel, hash] of Object.entries(files)) {
     if (typeof hash !== "string" || !HASH_RE.test(hash)) {
       throw new AgpmError(`${where}: files["${rel}"] must be "sha256:<64 hex>"`);

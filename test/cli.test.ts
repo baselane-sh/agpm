@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
 import { makeRepo } from "./helpers.js";
@@ -88,5 +90,35 @@ describe("runCli", () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
     expect(lines[0]).toBe("usage: agpm <check|list>");
+  });
+});
+
+describe("runCli hardening", () => {
+  it("fails when the lock approves a prototype-named skill the manifest does not list", async () => {
+    const root = await makeRepo({
+      ".claude/skills/toString/SKILL.md": "x",
+      "harness.json": JSON.stringify({ version: 1, skills: {} }),
+      "harness.lock": JSON.stringify({
+        version: 1,
+        skills: {
+          toString: {
+            source: "local",
+            dirs: [".claude/skills"],
+            files: { "SKILL.md": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881" },
+          },
+        },
+      }),
+    });
+    const { code, lines } = await run(["check"], root);
+    expect(code).toBe(1);
+    expect(lines[0]).toContain("FAIL skills/toString");
+  });
+
+  it("reports internal error and exits 2 when harness.json is unreadable for a non-ENOENT reason", async () => {
+    const root = await makeRepo({ "README.md": "hi" });
+    await mkdir(join(root, "harness.json"));
+    const { code, lines } = await run(["check"], root);
+    expect(code).toBe(2);
+    expect(lines).toEqual([expect.stringContaining("internal error")]);
   });
 });

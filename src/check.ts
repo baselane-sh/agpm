@@ -6,8 +6,8 @@ export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult): Chec
     const units = new Map(scan.units.filter((u) => u.kind === kind).map((u) => [u.name, u]));
     const names = new Set([...Object.keys(manifest[kind]), ...Object.keys(lock[kind]), ...units.keys()]);
     for (const name of [...names].sort()) {
-      const inManifest = name in manifest[kind];
-      const entry = lock[kind][name];
+      const inManifest = Object.hasOwn(manifest[kind], name);
+      const entry = Object.hasOwn(lock[kind], name) ? lock[kind][name] : undefined;
       const unit = units.get(name);
       if (inManifest !== (entry !== undefined)) {
         findings.push(fail(kind, name, "unsynced",

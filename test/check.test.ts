@@ -72,3 +72,21 @@ describe("runCheck", () => {
     expect(r.exitCode).toBe(0);
   });
 });
+
+describe("runCheck prototype-name hardening", () => {
+  it("fails unsynced when the lock approves a prototype-named entry the manifest does not", () => {
+    const r = runCheck(manifest({}), lockWith("toString", "x"), scanWith("toString", "x"));
+    expect(r.findings).toEqual([
+      expect.objectContaining({ level: "fail", code: "unsynced", name: "toString" }),
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("warns unlisted for a stray skill named toString instead of crashing", () => {
+    const r = runCheck(manifest({}), emptyLock(), scanWith("toString", "x"));
+    expect(r.findings).toEqual([
+      expect.objectContaining({ level: "warn", code: "unlisted", name: "toString" }),
+    ]);
+    expect(r.exitCode).toBe(0);
+  });
+});

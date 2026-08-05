@@ -36,7 +36,7 @@ export function parseManifest(text: string, filePath: string): Manifest {
     }
     ext = obj["extends"];
   }
-  const sections = {} as Record<Kind, Record<string, string>>;
+  const sections = Object.create(null) as Record<Kind, Record<string, string>>;
   for (const kind of KINDS) {
     sections[kind] = parseSection(obj[kind], kind, filePath);
   }
@@ -48,7 +48,7 @@ function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new AgpmError(`${filePath}: "${kind}" must be an object of name to provenance`);
   }
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = Object.create(null);
   for (const [name, value] of Object.entries(raw)) {
     if (!NAME_RE.test(name)) {
       throw new AgpmError(`${filePath}: bad ${kind} name "${name}" (letters, digits, dot, dash, underscore)`);

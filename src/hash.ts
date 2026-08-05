@@ -8,9 +8,11 @@ export function sha256(data: string | Uint8Array): string {
 }
 
 export async function hashDir(absDir: string): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = Object.create(null);
   await walk(absDir, "");
-  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const sorted: Record<string, string> = Object.create(null);
+  for (const key of Object.keys(out).sort()) sorted[key] = out[key]!;
+  return sorted;
 
   async function walk(dir: string, prefix: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
