@@ -389,3 +389,48 @@ describe("makeRegistryClient publish", () => {
     );
   });
 });
+
+describe("subpath registry base URLs", () => {
+  const SUBPATH_BASE = "https://host.example.com/registry";
+
+  function infoBody(): unknown {
+    return { name: "@acme/tdd-cycle", kind: "skill", latest: "1.2.0", versions: ["1.0.0", "1.2.0"] };
+  }
+
+  it("keeps the base path component in package endpoint URLs", async () => {
+    const { fetchImpl, calls } = makeFetchStub([jsonResponse(200, infoBody())]);
+    const client = makeRegistryClient(SUBPATH_BASE, TOKEN, fetchImpl);
+    await client.getPackageInfo("acme", "tdd-cycle");
+    expect(calls[0]!.url).toBe("https://host.example.com/registry/v1/packages/@acme/tdd-cycle");
+  });
+
+  it("keeps the base path component in the whoami endpoint URL", async () => {
+    const { fetchImpl, calls } = makeFetchStub([
+      jsonResponse(200, { user: "mohammad", orgs: [{ org: "acme", role: "owner" }] }),
+    ]);
+    const client = makeRegistryClient(SUBPATH_BASE, TOKEN, fetchImpl);
+    await client.whoami();
+    expect(calls[0]!.url).toBe("https://host.example.com/registry/v1/whoami");
+  });
+
+  it("normalizes a trailing slash on the base URL", async () => {
+    const { fetchImpl, calls } = makeFetchStub([jsonResponse(200, infoBody())]);
+    const client = makeRegistryClient("https://host.example.com/registry/", TOKEN, fetchImpl);
+    await client.getPackageInfo("acme", "tdd-cycle");
+    expect(calls[0]!.url).toBe("https://host.example.com/registry/v1/packages/@acme/tdd-cycle");
+  });
+
+  it("still attaches the bearer token on the subpath origin", async () => {
+    const { fetchImpl, calls } = makeFetchStub([jsonResponse(200, infoBody())]);
+    const client = makeRegistryClient(SUBPATH_BASE, TOKEN, fetchImpl);
+    await client.getPackageInfo("acme", "tdd-cycle");
+    expect(calls[0]!.headers["Authorization"]).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("leaves a path-free base URL unchanged", async () => {
+    const { fetchImpl, calls } = makeFetchStub([jsonResponse(200, infoBody())]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    await client.getPackageInfo("acme", "tdd-cycle");
+    expect(calls[0]!.url).toBe(`${BASE_URL}/v1/packages/@acme/tdd-cycle`);
+  });
+});

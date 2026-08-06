@@ -13,6 +13,7 @@ import { formatList } from "./list.js";
 import { emptyLock, parseLock, serializeLock } from "./lock.js";
 import { runLogin, runLogout } from "./login.js";
 import { emptyManifest, parseManifest, serializeManifest } from "./manifest.js";
+import { readSecretRaw } from "./promptSecret.js";
 import { readProvenance } from "./provenance.js";
 import { runPublish, type PublishArgs } from "./publishCmd.js";
 import { makeRegistryClient, type RegistryClient } from "./registry.js";
@@ -108,6 +109,11 @@ function resolveRegistryUrl(env: Record<string, string | undefined>): string {
 }
 
 async function defaultPromptSecret(message: string): Promise<string> {
+  // On a TTY, read in raw mode with echo suppressed so the pasted token never
+  // lands in the terminal scrollback. Piped stdin falls back to a plain line read.
+  if (process.stdin.isTTY === true) {
+    return readSecretRaw(message, process.stdin, process.stdout);
+  }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     return await rl.question(message);

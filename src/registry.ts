@@ -57,6 +57,9 @@ export interface RegistryClient {
 
 export function makeRegistryClient(baseUrl: string, token: string | undefined, fetchImpl: typeof fetch): RegistryClient {
   const base = new URL(baseUrl);
+  // A registry may live under a subpath (https://host/registry); keep that path
+  // as a prefix on every endpoint instead of letting new URL() discard it.
+  const basePath = base.pathname.replace(/\/+$/u, "");
 
   function authHeaders(url: URL): Record<string, string> {
     if (token !== undefined && url.origin === base.origin) {
@@ -65,11 +68,15 @@ export function makeRegistryClient(baseUrl: string, token: string | undefined, f
     return {};
   }
 
+  function endpoint(path: string): URL {
+    return new URL(`${base.origin}${basePath}${path}`);
+  }
+
   function packageUrl(org: string, name: string, version?: string): URL {
     const path = version === undefined
       ? `/v1/packages/@${encodeURIComponent(org)}/${encodeURIComponent(name)}`
       : `/v1/packages/@${encodeURIComponent(org)}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
-    return new URL(path, base);
+    return endpoint(path);
   }
 
   // Defense in depth against a misbehaving or hostile server echoing the Authorization
@@ -131,7 +138,7 @@ export function makeRegistryClient(baseUrl: string, token: string | undefined, f
     },
 
     async whoami() {
-      const body = await requestJson(new URL("/v1/whoami", base));
+      const body = await requestJson(endpoint("/v1/whoami"));
       return validateWhoami(body);
     },
 
