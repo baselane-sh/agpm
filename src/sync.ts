@@ -5,15 +5,17 @@ import {
   type Kind,
   type Lock,
   type LockEntry,
+  type LockFileEntry,
   type Manifest,
   type ResolvedExtends,
   type ScanResult,
   type ScannedUnit,
+  type TrackedScan,
 } from "./types.js";
 
 export interface SyncChange {
   action: "added" | "updated" | "removed";
-  kind: Kind;
+  kind: Kind | "files";
   name: string;
   detail: string;
 }
@@ -31,6 +33,7 @@ export function computeSync(
   scan: ScanResult,
   sources: Record<string, string>,
   resolvedExtends?: ResolvedExtends,
+  trackedScan?: TrackedScan,
 ): SyncResult {
   const manifest = emptyManifest();
   if (prev.extends !== undefined) manifest.extends = prev.extends;
@@ -84,6 +87,48 @@ export function computeSync(
       }
     }
   }
+
+  const declared = prev.files ?? (Object.create(null) as Record<string, string>);
+  const prevLockFiles = prevLock.files ?? (Object.create(null) as Record<string, LockFileEntry>);
+  if (trackedScan === undefined) {
+    // Callers without a tracked scan (install, remove, update, init) must
+    // carry the tracked-file sections through unchanged, never drop them.
+    const carriedFiles: Record<string, string> = Object.create(null);
+    for (const [path, provenance] of Object.entries(declared)) carriedFiles[path] = provenance;
+    const carriedLock: Record<string, LockFileEntry> = Object.create(null);
+    for (const [path, entry] of Object.entries(prevLockFiles)) carriedLock[path] = { ...entry };
+    if (Object.keys(carriedFiles).length > 0) manifest.files = carriedFiles;
+    if (Object.keys(carriedLock).length > 0) lock.files = carriedLock;
+  } else {
+    const states = trackedScan;
+    const removalPaths = new Set([...Object.keys(declared), ...Object.keys(prevLockFiles)]);
+    for (const path of [...removalPaths].sort()) {
+      const state = Object.hasOwn(states, path) ? states[path]! : undefined;
+      if (state === undefined || state.status === "missing") {
+        changes.push({ action: "removed", kind: "files", name: path, detail: "" });
+      }
+    }
+    const files: Record<string, string> = Object.create(null);
+    const lockFiles: Record<string, LockFileEntry> = Object.create(null);
+    for (const path of Object.keys(declared).sort()) {
+      const state = Object.hasOwn(states, path) ? states[path]! : undefined;
+      if (state === undefined || state.status === "missing") continue;
+      files[path] = "local";
+      const entry: LockFileEntry =
+        state.status === "file" ? { source: "local", sha256: state.sha256! } : { source: "local", files: state.files! };
+      lockFiles[path] = entry;
+      const prevEntry = Object.hasOwn(prevLockFiles, path) ? prevLockFiles[path]! : undefined;
+      if (prevEntry === undefined) {
+        changes.push({ action: "added", kind: "files", name: path, detail: "local" });
+      } else if (!sameFileEntry(prevEntry, entry)) {
+        changes.push({ action: "updated", kind: "files", name: path, detail: "" });
+      }
+    }
+    if (Object.keys(files).length > 0) {
+      manifest.files = files;
+      lock.files = lockFiles;
+    }
+  }
   return { manifest, lock, changes, notes };
 }
 
@@ -104,6 +149,12 @@ function describeSplit(kind: Kind, name: string, unit: ScannedUnit): string | un
 
 function sameEntry(a: LockEntry, b: LockEntry): boolean {
   return a.source === b.source && sameArray(a.dirs, b.dirs) && sameRecord(a.files, b.files);
+}
+
+function sameFileEntry(a: LockFileEntry, b: LockFileEntry): boolean {
+  if (a.sha256 !== undefined || b.sha256 !== undefined) return a.sha256 === b.sha256;
+  if (a.files === undefined || b.files === undefined) return a.files === b.files;
+  return sameRecord(a.files, b.files);
 }
 
 function diffSummary(a: LockEntry, b: LockEntry): string {

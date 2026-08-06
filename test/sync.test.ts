@@ -3,7 +3,7 @@ import { computeSync } from "../src/sync.js";
 import { emptyLock } from "../src/lock.js";
 import { emptyManifest } from "../src/manifest.js";
 import { sha256 } from "../src/hash.js";
-import type { Lock, Manifest, ResolvedExtends, ScanResult } from "../src/types.js";
+import type { Lock, Manifest, ResolvedExtends, ScanResult, TrackedScan } from "../src/types.js";
 
 const noSources: Record<string, string> = Object.create(null);
 
@@ -182,5 +182,79 @@ describe("computeSync", () => {
     expect(r.lock.extends).toBe("github:acme/policy@main");
     expect(r.lock.extendsCommit).toBe("a".repeat(40));
     expect(r.lock.extendsManifest?.skills["a"]).toBe("local");
+  });
+});
+
+describe("computeSync tracked files", () => {
+  const H = sha256("x");
+  const noScan = { units: [] };
+
+  it("adds a newly declared tracked file", () => {
+    const prev = { ...emptyManifest(), files: { "CLAUDE.md": "local" } };
+    const tracked: TrackedScan = { "CLAUDE.md": { status: "file", sha256: H } };
+    const r = computeSync(prev, emptyLock(), noScan, {}, undefined, tracked);
+    expect(r.manifest.files).toEqual({ "CLAUDE.md": "local" });
+    expect(r.lock.files).toEqual({ "CLAUDE.md": { source: "local", sha256: H } });
+    expect(r.changes).toEqual([{ action: "added", kind: "files", name: "CLAUDE.md", detail: "local" }]);
+  });
+
+  it("updates a drifted tracked file and keeps a matching one silent", () => {
+    const prev = { ...emptyManifest(), files: { "CLAUDE.md": "local", "AGENTS.md": "local" } };
+    const prevLock = emptyLock();
+    prevLock.files = {
+      "CLAUDE.md": { source: "local", sha256: sha256("old") },
+      "AGENTS.md": { source: "local", sha256: H },
+    };
+    const tracked: TrackedScan = {
+      "CLAUDE.md": { status: "file", sha256: H },
+      "AGENTS.md": { status: "file", sha256: H },
+    };
+    const r = computeSync(prev, prevLock, noScan, {}, undefined, tracked);
+    expect(r.changes).toEqual([{ action: "updated", kind: "files", name: "CLAUDE.md", detail: "" }]);
+    expect(r.lock.files!["CLAUDE.md"]).toEqual({ source: "local", sha256: H });
+  });
+
+  it("records directory entries", () => {
+    const prev = { ...emptyManifest(), files: { hooks: "local" } };
+    const tracked: TrackedScan = { hooks: { status: "dir", files: { "guard.sh": H } } };
+    const r = computeSync(prev, emptyLock(), noScan, {}, undefined, tracked);
+    expect(r.lock.files).toEqual({ hooks: { source: "local", files: { "guard.sh": H } } });
+  });
+
+  it("removes a tracked path that left the disk", () => {
+    const prev = { ...emptyManifest(), files: { "CLAUDE.md": "local" } };
+    const prevLock = emptyLock();
+    prevLock.files = { "CLAUDE.md": { source: "local", sha256: H } };
+    const tracked: TrackedScan = { "CLAUDE.md": { status: "missing" } };
+    const r = computeSync(prev, prevLock, noScan, {}, undefined, tracked);
+    expect(r.manifest.files).toBeUndefined();
+    expect(r.lock.files).toBeUndefined();
+    expect(r.changes).toEqual([{ action: "removed", kind: "files", name: "CLAUDE.md", detail: "" }]);
+  });
+
+  it("drops a lock-only files entry", () => {
+    const prevLock = emptyLock();
+    prevLock.files = { "CLAUDE.md": { source: "local", sha256: H } };
+    const r = computeSync(emptyManifest(), prevLock, noScan, {}, undefined, {});
+    expect(r.lock.files).toBeUndefined();
+    expect(r.changes).toEqual([{ action: "removed", kind: "files", name: "CLAUDE.md", detail: "" }]);
+  });
+
+  it("leaves files sections absent when nothing is tracked", () => {
+    const r = computeSync(emptyManifest(), emptyLock(), noScan, {});
+    expect(r.manifest.files).toBeUndefined();
+    expect(r.lock.files).toBeUndefined();
+  });
+
+  it("carries tracked files through unchanged when no tracked scan is given", () => {
+    // install, remove, and update call computeSync without a tracked scan;
+    // an omitted scan must never remove tracked files.
+    const prev = { ...emptyManifest(), files: { "CLAUDE.md": "local" } };
+    const prevLock = emptyLock();
+    prevLock.files = { "CLAUDE.md": { source: "local", sha256: H } };
+    const r = computeSync(prev, prevLock, noScan, {});
+    expect(r.manifest.files).toEqual({ "CLAUDE.md": "local" });
+    expect(r.lock.files).toEqual({ "CLAUDE.md": { source: "local", sha256: H } });
+    expect(r.changes).toEqual([]);
   });
 });
