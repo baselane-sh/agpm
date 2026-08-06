@@ -16,7 +16,7 @@ import { makeRepo } from "./helpers.js";
 
 const REGISTRY_URL = "https://registry.test";
 const USAGE =
-  "usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
+  "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
 
 function sha256Hex(data: Buffer | string): string {
   return createHash("sha256").update(data).digest("hex");

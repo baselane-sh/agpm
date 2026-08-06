@@ -20,14 +20,17 @@ import { makeRegistryClient, type RegistryClient } from "./registry.js";
 import { runRemove } from "./remove.js";
 import { scanRepo } from "./scan.js";
 import { computeSync, type SyncResult } from "./sync.js";
-import type { Lock, Manifest, ResolvedExtends } from "./types.js";
+import { runTrack, runUntrack } from "./track.js";
+import { candidateWarnings, scanTrackedFiles } from "./trackedFiles.js";
+import type { Lock, Manifest, ResolvedExtends, TrackedInput } from "./types.js";
 import { runUpdate } from "./update.js";
 
 type Writer = (line: string) => void;
 type PromptSecret = (msg: string) => Promise<string>;
+type Confirm = (message: string) => Promise<boolean>;
 
 const USAGE =
-  "usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
+  "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
 const DEFAULT_REGISTRY_URL = "https://registry.baselane.sh";
 
 export interface CliDeps {
@@ -35,6 +38,7 @@ export interface CliDeps {
   registryFetch?: typeof fetch;
   homeDir?: string;
   promptSecret?: PromptSecret;
+  confirm?: Confirm;
 }
 
 export async function runCli(argv: string[], cwd: string, write: Writer, deps: CliDeps = {}): Promise<number> {
@@ -42,6 +46,7 @@ export async function runCli(argv: string[], cwd: string, write: Writer, deps: C
   const registryFetch = deps.registryFetch ?? fetch;
   const homeDir = deps.homeDir ?? homedir();
   const promptSecret = deps.promptSecret ?? defaultPromptSecret;
+  const confirm = deps.confirm ?? (process.stdin.isTTY === true ? defaultConfirm : undefined);
   const registryUrl = resolveRegistryUrl(process.env);
   const [command, ...rest] = argv;
   try {
@@ -61,7 +66,7 @@ export async function runCli(argv: string[], cwd: string, write: Writer, deps: C
     switch (command) {
       case "init":
         if (rest.length > 0) return usage(write);
-        return await init(cwd, write);
+        return await init(cwd, write, confirm);
       case "sync":
         if (rest.length > 0) return usage(write);
         return await sync(cwd, write, fetcher);
@@ -77,6 +82,12 @@ export async function runCli(argv: string[], cwd: string, write: Writer, deps: C
         return await remove(cwd, write, rest);
       case "update":
         return await update(cwd, write, rest, registryUrl, homeDir, registryFetch);
+      case "track":
+        if (rest.length !== 1) return usage(write);
+        return await track(cwd, write, rest[0]!);
+      case "untrack":
+        if (rest.length !== 1) return usage(write);
+        return await untrack(cwd, write, rest[0]!);
       case "login":
         return await login(write, rest, registryUrl, homeDir, promptSecret, registryFetch);
       case "logout":
@@ -117,6 +128,16 @@ async function defaultPromptSecret(message: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     return await rl.question(message);
+  } finally {
+    rl.close();
+  }
+}
+
+async function defaultConfirm(message: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(message);
+    return /^y(es)?$/i.test(answer.trim());
   } finally {
     rl.close();
   }
@@ -241,9 +262,29 @@ async function loadFiles(cwd: string): Promise<{ manifest: Manifest; lock: Lock 
   return { manifest, lock };
 }
 
+async function loadTracked(cwd: string, manifest: Manifest): Promise<TrackedInput> {
+  return {
+    scan: await scanTrackedFiles(cwd, manifest.files ?? {}),
+    candidates: await candidateWarnings(cwd),
+  };
+}
+
+async function track(cwd: string, write: Writer, path: string): Promise<number> {
+  const { lines } = await runTrack(cwd, path);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+async function untrack(cwd: string, write: Writer, path: string): Promise<number> {
+  const { lines } = await runUntrack(cwd, path);
+  for (const line of lines) write(line);
+  return 0;
+}
+
 async function check(cwd: string, write: Writer, opts: { strict: boolean; json: boolean }): Promise<number> {
   const { manifest, lock } = await loadFiles(cwd);
-  const result = runCheck(manifest, lock, await scanRepo(cwd), { strict: opts.strict });
+  const tracked = await loadTracked(cwd, manifest);
+  const result = runCheck(manifest, lock, await scanRepo(cwd), { strict: opts.strict }, tracked);
   const fails = result.findings.filter((f) => f.level === "fail").length;
   const warns = result.findings.length - fails;
   if (opts.json) {
@@ -261,17 +302,19 @@ async function check(cwd: string, write: Writer, opts: { strict: boolean; json: 
 async function audit(cwd: string, write: Writer): Promise<number> {
   const { manifest, lock } = await loadFiles(cwd);
   const { notes } = await readProvenance(cwd);
-  for (const line of formatAudit(manifest, lock, await scanRepo(cwd), notes)) write(line);
+  const tracked = await loadTracked(cwd, manifest);
+  for (const line of formatAudit(manifest, lock, await scanRepo(cwd), notes, tracked)) write(line);
   return 0;
 }
 
 async function list(cwd: string, write: Writer): Promise<number> {
   const { manifest, lock } = await loadFiles(cwd);
-  for (const line of formatList(manifest, lock, await scanRepo(cwd))) write(line);
+  const tracked = await loadTracked(cwd, manifest);
+  for (const line of formatList(manifest, lock, await scanRepo(cwd), tracked)) write(line);
   return 0;
 }
 
-async function init(cwd: string, write: Writer): Promise<number> {
+async function init(cwd: string, write: Writer, confirm?: Confirm): Promise<number> {
   const manifestPath = join(cwd, "harness.json");
   if (await fileExists(manifestPath)) {
     throw new AgpmError(`harness.json already exists in ${cwd}; run agpm sync`);
@@ -281,7 +324,17 @@ async function init(cwd: string, write: Writer): Promise<number> {
   await writeResult(cwd, result);
   for (const note of result.notes) write(`note: ${note}`);
   reportChanges(result.changes, write);
-  const n = result.changes.length;
+  let tracked = 0;
+  if (confirm !== undefined) {
+    for (const note of await candidateWarnings(cwd)) {
+      if (await confirm(`track ${note.path}? [y/N] `)) {
+        const { lines } = await runTrack(cwd, note.path);
+        for (const line of lines) write(line);
+        tracked++;
+      }
+    }
+  }
+  const n = result.changes.length + tracked;
   write(`init: ${n} ${n === 1 ? "entry" : "entries"} recorded`);
   return 0;
 }
@@ -294,7 +347,8 @@ async function sync(cwd: string, write: Writer, fetcher: ExtendsFetcher): Promis
     write(`extends: ${manifest.extends} pinned at ${resolved.commit.slice(0, 12)}`);
   }
   const { sources, notes } = await readProvenance(cwd);
-  const result = computeSync(manifest, lock, await scanRepo(cwd), sources, resolved);
+  const trackedScan = await scanTrackedFiles(cwd, manifest.files ?? {});
+  const result = computeSync(manifest, lock, await scanRepo(cwd), sources, resolved, trackedScan);
   await writeResult(cwd, result);
   for (const note of notes) write(`note: ${note}`);
   for (const note of result.notes) write(`note: ${note}`);

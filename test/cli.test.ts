@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
@@ -89,7 +89,9 @@ describe("runCli", () => {
   it("unknown command prints usage and exits 2", async () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description");
+    expect(lines[0]).toBe(
+      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description",
+    );
   });
 });
 
@@ -238,7 +240,9 @@ describe("runCli check flags", () => {
   it("rejects an unknown flag with the usage line and exit 2", async () => {
     const { code, lines } = await run(["check", "--verbose"], await cleanRepo());
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description");
+    expect(lines[0]).toBe(
+      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description",
+    );
     const listFlags = await run(["list", "--json"], await cleanRepo());
     expect(listFlags.code).toBe(2);
   });
@@ -312,5 +316,116 @@ describe("runCli sync with extends", () => {
     const code = await runCli(["sync"], root, (l) => lines.push(l), { extendsFetcher: failing });
     expect(code).toBe(2);
     expect(lines[0]).toContain("404");
+  });
+});
+
+describe("tracked files through the CLI", () => {
+  it("prints the usage line with track and untrack", async () => {
+    const root = await makeRepo({});
+    const r = await run(["bogus"], root);
+    expect(r.code).toBe(2);
+    expect(r.lines).toEqual([
+      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description",
+    ]);
+  });
+
+  it("rejects wrong track and untrack arg counts with usage", async () => {
+    const root = await makeRepo({});
+    expect((await run(["track"], root)).code).toBe(2);
+    expect((await run(["track", "a", "b"], root)).code).toBe(2);
+    expect((await run(["untrack"], root)).code).toBe(2);
+  });
+
+  it("tracks, checks green, untracks", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x" });
+    await run(["init"], root);
+    const t = await run(["track", "CLAUDE.md"], root);
+    expect(t.code).toBe(0);
+    expect(t.lines).toEqual(["tracked CLAUDE.md"]);
+    const c = await run(["check"], root);
+    expect(c.code).toBe(0);
+    expect(c.lines).toEqual(["check: 0 fail, 0 warn"]);
+    const u = await run(["untrack", "CLAUDE.md"], root);
+    expect(u.lines).toEqual(["untracked CLAUDE.md"]);
+  });
+
+  it("track refusal exits 2 with the message", async () => {
+    const root = await makeRepo({});
+    await run(["init"], root);
+    const r = await run(["track", "nope.md"], root);
+    expect(r.code).toBe(2);
+    expect(r.lines).toEqual(["no such file: nope.md"]);
+  });
+
+  it("check warns about an untracked candidate and --strict fails it", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x" });
+    await run(["init"], root);
+    const warn = await run(["check"], root);
+    expect(warn.code).toBe(0);
+    expect(warn.lines).toEqual([
+      "WARN files/CLAUDE.md: CLAUDE.md exists on disk but nobody tracks it in harness.json; run agpm track CLAUDE.md",
+      "check: 0 fail, 1 warn",
+    ]);
+    const strict = await run(["check", "--strict"], root);
+    expect(strict.code).toBe(1);
+    expect(strict.lines[0]).toMatch(/^FAIL files\/CLAUDE\.md: /);
+  });
+
+  it("check --json carries files findings", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x" });
+    await run(["init"], root);
+    const r = await run(["check", "--json"], root);
+    const parsed = JSON.parse(r.lines.join("\n"));
+    expect(parsed.findings[0]).toMatchObject({ kind: "files", name: "CLAUDE.md", code: "unlisted", level: "warn" });
+  });
+
+  it("sync rehashes a drifted tracked file", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x" });
+    await run(["init"], root);
+    await run(["track", "CLAUDE.md"], root);
+    await writeFile(join(root, "CLAUDE.md"), "CHANGED", "utf8");
+    expect((await run(["check"], root)).code).toBe(1);
+    const s = await run(["sync"], root);
+    expect(s.lines).toContain("updated files/CLAUDE.md");
+    expect((await run(["check"], root)).code).toBe(0);
+  });
+
+  it("list and audit include files rows", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x" });
+    await run(["init"], root);
+    await run(["track", "CLAUDE.md"], root);
+    const l = await run(["list"], root);
+    expect(l.lines).toContain(`${"files".padEnd(9)} ${"CLAUDE.md".padEnd(30)} ${"ok".padEnd(9)} local`);
+    const a = await run(["audit"], root);
+    expect(a.lines.some((line) => line.startsWith("files") && line.includes("CLAUDE.md"))).toBe(true);
+  });
+});
+
+describe("init candidate prompt", () => {
+  it("prompts per candidate with an injected confirm and counts tracked paths", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x", ".mcp.json": "{}" });
+    const lines: string[] = [];
+    const asked: string[] = [];
+    const confirm = async (message: string): Promise<boolean> => {
+      asked.push(message);
+      return message.includes("CLAUDE.md");
+    };
+    const code = await runCli(["init"], root, (l) => lines.push(l), { confirm });
+    expect(code).toBe(0);
+    expect(asked).toEqual(["track CLAUDE.md? [y/N] ", "track .mcp.json? [y/N] "]);
+    expect(lines).toContain("tracked CLAUDE.md");
+    expect(lines[lines.length - 1]).toBe("init: 1 entry recorded");
+    const warn = await run(["check"], root);
+    expect(warn.code).toBe(0);
+    expect(warn.lines.some((l) => l.includes(".mcp.json"))).toBe(true);
+    expect(warn.lines.some((l) => l.includes("WARN files/CLAUDE.md"))).toBe(false);
+  });
+
+  it("never prompts without a confirm dep (non-TTY)", async () => {
+    const root = await makeRepo({ "CLAUDE.md": "x" });
+    const r = await run(["init"], root);
+    expect(r.code).toBe(0);
+    expect(r.lines.some((l) => l.startsWith("track "))).toBe(false);
+    expect(r.lines[r.lines.length - 1]).toBe("init: 0 entries recorded");
   });
 });
