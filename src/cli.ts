@@ -1,28 +1,47 @@
 import { access, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { formatAudit } from "./audit.js";
 import { runCheck } from "./check.js";
+import { resolveToken } from "./credentials.js";
 import { AgpmError } from "./errors.js";
 import { resolveExtends, type ExtendsFetcher } from "./extends.js";
 import { githubExtendsFetcher } from "./github.js";
+import { runInstall } from "./install.js";
 import { formatList } from "./list.js";
 import { emptyLock, parseLock, serializeLock } from "./lock.js";
+import { runLogin, runLogout } from "./login.js";
 import { emptyManifest, parseManifest, serializeManifest } from "./manifest.js";
 import { readProvenance } from "./provenance.js";
+import { runPublish, type PublishArgs } from "./publishCmd.js";
+import { makeRegistryClient, type RegistryClient } from "./registry.js";
+import { runRemove } from "./remove.js";
 import { scanRepo } from "./scan.js";
 import { computeSync, type SyncResult } from "./sync.js";
 import type { Lock, Manifest, ResolvedExtends } from "./types.js";
+import { runUpdate } from "./update.js";
 
 type Writer = (line: string) => void;
+type PromptSecret = (msg: string) => Promise<string>;
 
-const USAGE = "usage: agpm <init|sync|check|audit|list>; check accepts --strict and --json";
+const USAGE =
+  "usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
+const DEFAULT_REGISTRY_URL = "https://registry.baselane.sh";
 
 export interface CliDeps {
   extendsFetcher?: ExtendsFetcher;
+  registryFetch?: typeof fetch;
+  homeDir?: string;
+  promptSecret?: PromptSecret;
 }
 
 export async function runCli(argv: string[], cwd: string, write: Writer, deps: CliDeps = {}): Promise<number> {
   const fetcher = deps.extendsFetcher ?? githubExtendsFetcher(process.env);
+  const registryFetch = deps.registryFetch ?? fetch;
+  const homeDir = deps.homeDir ?? homedir();
+  const promptSecret = deps.promptSecret ?? defaultPromptSecret;
+  const registryUrl = resolveRegistryUrl(process.env);
   const [command, ...rest] = argv;
   try {
     if (command === "check") {
@@ -38,22 +57,34 @@ export async function runCli(argv: string[], cwd: string, write: Writer, deps: C
       }
       return await check(cwd, write, { strict, json });
     }
-    if (rest.length > 0 || command === undefined) {
-      write(USAGE);
-      return 2;
-    }
     switch (command) {
       case "init":
+        if (rest.length > 0) return usage(write);
         return await init(cwd, write);
       case "sync":
+        if (rest.length > 0) return usage(write);
         return await sync(cwd, write, fetcher);
       case "audit":
+        if (rest.length > 0) return usage(write);
         return await audit(cwd, write);
       case "list":
+        if (rest.length > 0) return usage(write);
         return await list(cwd, write);
+      case "install":
+        return await install(cwd, write, rest, registryUrl, homeDir, registryFetch);
+      case "remove":
+        return await remove(cwd, write, rest);
+      case "update":
+        return await update(cwd, write, rest, registryUrl, homeDir, registryFetch);
+      case "login":
+        return await login(write, rest, registryUrl, homeDir, promptSecret, registryFetch);
+      case "logout":
+        if (rest.length > 0) return usage(write);
+        return await logout(write, registryUrl, homeDir);
+      case "publish":
+        return await publish(cwd, write, rest, registryUrl, homeDir, registryFetch);
       default:
-        write(USAGE);
-        return 2;
+        return usage(write);
     }
   } catch (error) {
     if (error instanceof AgpmError) {
@@ -63,6 +94,119 @@ export async function runCli(argv: string[], cwd: string, write: Writer, deps: C
     write(`internal error: ${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
+}
+
+function usage(write: Writer): number {
+  write(USAGE);
+  return 2;
+}
+
+function resolveRegistryUrl(env: Record<string, string | undefined>): string {
+  let url = env["AGPM_REGISTRY"] ?? DEFAULT_REGISTRY_URL;
+  while (url.endsWith("/")) url = url.slice(0, -1);
+  return url;
+}
+
+async function defaultPromptSecret(message: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(message);
+  } finally {
+    rl.close();
+  }
+}
+
+async function makeClient(registryUrl: string, homeDir: string, fetchImpl: typeof fetch): Promise<RegistryClient> {
+  const token = await resolveToken(registryUrl, process.env, homeDir);
+  return makeRegistryClient(registryUrl, token, fetchImpl);
+}
+
+async function install(
+  cwd: string,
+  write: Writer,
+  args: string[],
+  registryUrl: string,
+  homeDir: string,
+  fetchImpl: typeof fetch,
+): Promise<number> {
+  if (args.length !== 1) return usage(write);
+  const client = await makeClient(registryUrl, homeDir, fetchImpl);
+  const { lines } = await runInstall(cwd, args[0]!, client);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+async function remove(cwd: string, write: Writer, args: string[]): Promise<number> {
+  if (args.length !== 1) return usage(write);
+  const { lines } = await runRemove(cwd, args[0]!);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+async function update(
+  cwd: string,
+  write: Writer,
+  args: string[],
+  registryUrl: string,
+  homeDir: string,
+  fetchImpl: typeof fetch,
+): Promise<number> {
+  if (args.length > 1) return usage(write);
+  const client = await makeClient(registryUrl, homeDir, fetchImpl);
+  const { lines } = await runUpdate(cwd, args[0], client);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+async function login(
+  write: Writer,
+  args: string[],
+  registryUrl: string,
+  homeDir: string,
+  promptSecret: PromptSecret,
+  fetchImpl: typeof fetch,
+): Promise<number> {
+  if (args.length > 0) return usage(write);
+  const clientFactory = (token: string) => makeRegistryClient(registryUrl, token, fetchImpl);
+  const { lines } = await runLogin(registryUrl, promptSecret, clientFactory, homeDir);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+async function logout(write: Writer, registryUrl: string, homeDir: string): Promise<number> {
+  const { lines } = await runLogout(registryUrl, homeDir);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+async function publish(
+  cwd: string,
+  write: Writer,
+  args: string[],
+  registryUrl: string,
+  homeDir: string,
+  fetchImpl: typeof fetch,
+): Promise<number> {
+  const parsed = parsePublishArgs(args);
+  if (parsed === undefined) return usage(write);
+  const client = await makeClient(registryUrl, homeDir, fetchImpl);
+  const { lines } = await runPublish(cwd, parsed, client);
+  for (const line of lines) write(line);
+  return 0;
+}
+
+function parsePublishArgs(args: string[]): PublishArgs | undefined {
+  if (args[0] === "--pack") {
+    if (args.length !== 3) return undefined;
+    return { packFile: args[1], ref: args[2]! };
+  }
+  if (args.length === 2) {
+    return { folder: args[0], ref: args[1]! };
+  }
+  if (args.length === 4 && args[2] === "--description") {
+    return { folder: args[0], ref: args[1]!, description: args[3] };
+  }
+  return undefined;
 }
 
 async function loadFiles(cwd: string): Promise<{ manifest: Manifest; lock: Lock }> {

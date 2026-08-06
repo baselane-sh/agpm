@@ -89,7 +89,7 @@ describe("runCli", () => {
   it("unknown command prints usage and exits 2", async () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>; check accepts --strict and --json");
+    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description");
   });
 });
 
@@ -238,7 +238,7 @@ describe("runCli check flags", () => {
   it("rejects an unknown flag with the usage line and exit 2", async () => {
     const { code, lines } = await run(["check", "--verbose"], await cleanRepo());
     expect(code).toBe(2);
-    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list>; check accepts --strict and --json");
+    expect(lines[0]).toBe("usage: agpm <init|sync|check|audit|list|install|remove|update|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description");
     const listFlags = await run(["list", "--json"], await cleanRepo());
     expect(listFlags.code).toBe(2);
   });
