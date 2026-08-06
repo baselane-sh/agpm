@@ -268,6 +268,51 @@ describe("runPublish: pack file validation", () => {
   });
 });
 
+describe("runPublish: visibility", () => {
+  it("adds visibility public to the skill manifest when requested", async () => {
+    const root = await makeRepo({ "skill/SKILL.md": "# Title\ndescribes the skill\n" });
+    const { client, calls } = fakeClient();
+
+    await runPublish(
+      root,
+      { folder: join(root, "skill"), ref: "@acme/tdd-cycle@1.0.0", visibility: "public" },
+      client,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect((calls[0]!.manifest as { visibility?: string }).visibility).toBe("public");
+  });
+
+  it("adds visibility public to the pack manifest when requested", async () => {
+    const root = await makeRepo({
+      "pack.json": JSON.stringify({
+        description: "Everything a frontend repo needs",
+        skills: { "@baselane/tdd-cycle": "1.2.0" },
+      }),
+    });
+    const { client, calls } = fakeClient();
+
+    await runPublish(
+      root,
+      { packFile: join(root, "pack.json"), ref: "@acme/frontend@1.0.0", visibility: "public" },
+      client,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect((calls[0]!.manifest as { visibility?: string }).visibility).toBe("public");
+  });
+
+  it("omits the visibility field when the flag is not given", async () => {
+    const root = await makeRepo({ "skill/SKILL.md": "# Title\ndescribes the skill\n" });
+    const { client, calls } = fakeClient();
+
+    await runPublish(root, { folder: join(root, "skill"), ref: "@acme/tdd-cycle@1.0.0" }, client);
+
+    expect(calls).toHaveLength(1);
+    expect(Object.hasOwn(calls[0]!.manifest as object, "visibility")).toBe(false);
+  });
+});
+
 describe("runPublish: pack manifest", () => {
   it("publishes a pack manifest without a tarball", async () => {
     const root = await makeRepo({

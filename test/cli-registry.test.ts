@@ -16,7 +16,7 @@ import { makeRepo } from "./helpers.js";
 
 const REGISTRY_URL = "https://registry.test";
 const USAGE =
-  "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
+  "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack, --description, and --public";
 
 function sha256Hex(data: Buffer | string): string {
   return createHash("sha256").update(data).digest("hex");
@@ -369,6 +369,40 @@ describe("runCli publish", () => {
 
     expect(code).toBe(0);
     expect((stub.published[0]!.manifest as { description: string }).description).toBe("custom description");
+  });
+
+  it("accepts --public and sends visibility in the manifest", async () => {
+    const stub = new RegistryStub();
+    const home = await makeHome();
+    const { writeToken } = await import("../src/credentials.js");
+    await writeToken(REGISTRY_URL, "pub-token", home);
+    const root = await makeRepo({ "my-skill/SKILL.md": "# My Skill\nDoes a thing.\n" });
+
+    const { code } = await run(["publish", "my-skill", "@acme/my-skill@1.0.0", "--public"], root, {
+      registryFetch: stub.fetchImpl(),
+      homeDir: home,
+    });
+
+    expect(code).toBe(0);
+    expect((stub.published[0]!.manifest as { visibility?: string }).visibility).toBe("public");
+  });
+
+  it("accepts --public together with --pack", async () => {
+    const stub = new RegistryStub();
+    const home = await makeHome();
+    const { writeToken } = await import("../src/credentials.js");
+    await writeToken(REGISTRY_URL, "pub-token", home);
+    const root = await makeRepo({
+      "pack.json": JSON.stringify({ description: "a pack", skills: { "@acme/a": "1.0.0" } }),
+    });
+
+    const { code } = await run(["publish", "--pack", "pack.json", "@acme/mypack@1.0.0", "--public"], root, {
+      registryFetch: stub.fetchImpl(),
+      homeDir: home,
+    });
+
+    expect(code).toBe(0);
+    expect((stub.published[0]!.manifest as { visibility?: string }).visibility).toBe("public");
   });
 
   it("exits 2 with usage on no args", async () => {

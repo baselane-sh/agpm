@@ -30,7 +30,7 @@ type PromptSecret = (msg: string) => Promise<string>;
 type Confirm = (message: string) => Promise<boolean>;
 
 const USAGE =
-  "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description";
+  "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack, --description, and --public";
 const DEFAULT_REGISTRY_URL = "https://registry.baselane.sh";
 
 export interface CliDeps {
@@ -223,6 +223,14 @@ async function publish(
 }
 
 function parsePublishArgs(args: string[]): PublishArgs | undefined {
+  const isPublic = args.includes("--public");
+  const rest = args.filter((arg) => arg !== "--public");
+  const base = parsePublishShape(rest);
+  if (base === undefined) return undefined;
+  return isPublic ? { ...base, visibility: "public" } : base;
+}
+
+function parsePublishShape(args: string[]): PublishArgs | undefined {
   if (args[0] === "--pack") {
     if (args.length !== 3) return undefined;
     return { packFile: args[1], ref: args[2]! };

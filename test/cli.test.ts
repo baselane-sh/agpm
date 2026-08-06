@@ -90,7 +90,7 @@ describe("runCli", () => {
     const { code, lines } = await run(["frobnicate"], await makeRepo({}));
     expect(code).toBe(2);
     expect(lines[0]).toBe(
-      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description",
+      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack, --description, and --public",
     );
   });
 });
@@ -241,7 +241,7 @@ describe("runCli check flags", () => {
     const { code, lines } = await run(["check", "--verbose"], await cleanRepo());
     expect(code).toBe(2);
     expect(lines[0]).toBe(
-      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description",
+      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack, --description, and --public",
     );
     const listFlags = await run(["list", "--json"], await cleanRepo());
     expect(listFlags.code).toBe(2);
@@ -325,7 +325,7 @@ describe("tracked files through the CLI", () => {
     const r = await run(["bogus"], root);
     expect(r.code).toBe(2);
     expect(r.lines).toEqual([
-      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack and --description",
+      "usage: agpm <init|sync|check|audit|list|install|remove|update|track|untrack|login|logout|publish>; check accepts --strict and --json; publish accepts --pack, --description, and --public",
     ]);
   });
 

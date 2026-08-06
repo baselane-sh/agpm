@@ -19,6 +19,7 @@ export interface PublishArgs {
   packFile?: string;
   ref: string;
   description?: string;
+  visibility?: "public";
 }
 
 interface SkillManifestOut {
@@ -60,10 +61,10 @@ export async function runPublish(
 
   if (args.folder !== undefined) {
     const { manifest, tarball } = await buildSkillManifest(cwd, args.folder, org, name, version, args.description);
-    await client.publish(org, name, version, manifest, tarball);
+    await client.publish(org, name, version, withVisibility(manifest, args.visibility), tarball);
   } else {
     const manifest = await buildPackManifest(cwd, args.packFile!, org, name, version);
-    await client.publish(org, name, version, manifest);
+    await client.publish(org, name, version, withVisibility(manifest, args.visibility));
   }
 
   return { lines: [`published ${ref}`] };
@@ -231,6 +232,15 @@ function validatePackFile(value: unknown): { description: string; skills: Record
   for (const key of Object.keys(unsorted).sort()) skills[key] = unsorted[key]!;
 
   return { description, skills };
+}
+
+// The registry accepts "visibility" on first publish only, so the field is sent only
+// when the user asked for it; the default (absent) means private.
+function withVisibility<T extends object>(
+  manifest: T,
+  visibility: "public" | undefined,
+): T | (T & { visibility: "public" }) {
+  return visibility === undefined ? manifest : { ...manifest, visibility };
 }
 
 function sha256Hex(data: Buffer | Uint8Array): string {
