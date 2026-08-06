@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { symlink, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sha256 } from "../src/hash.js";
 import { candidateWarnings, checkTrackedFiles, scanTrackedFiles, MANAGED_ROOTS, inManagedRoot, isRepoRelative } from "../src/trackedFiles.js";
@@ -168,5 +168,27 @@ describe("candidateWarnings", () => {
   it("returns nothing for an empty repo", async () => {
     const root = await makeRepo({});
     expect(await candidateWarnings(root)).toEqual([]);
+  });
+
+  it("warns instead of silently passing when a candidate is a symlink", async () => {
+    const root = await makeRepo({ "real.md": "instructions\n" });
+    await symlink(join(root, "real.md"), join(root, "CLAUDE.md"));
+    const notes = await candidateWarnings(root);
+    expect(notes).toEqual([
+      { path: "CLAUDE.md", message: "CLAUDE.md is a symlink; agpm tracks regular files only; replace it with a regular file to approve it" },
+    ]);
+  });
+
+  it("warns on a symlinked settings.json without reading its contents", async () => {
+    const root = await makeRepo({ "real.json": JSON.stringify({ theme: "dark" }) });
+    await mkdir(join(root, ".claude"), { recursive: true });
+    await symlink(join(root, "real.json"), join(root, ".claude/settings.json"));
+    const notes = await candidateWarnings(root);
+    expect(notes).toEqual([
+      {
+        path: ".claude/settings.json",
+        message: ".claude/settings.json is a symlink; agpm tracks regular files only; replace it with a regular file to approve it",
+      },
+    ]);
   });
 });

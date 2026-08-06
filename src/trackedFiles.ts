@@ -92,26 +92,42 @@ const SETTINGS_CANDIDATE = ".claude/settings.json";
 export async function candidateWarnings(root: string): Promise<CandidateNote[]> {
   const notes: CandidateNote[] = [];
   for (const path of PLAIN_CANDIDATES) {
-    if (await isRegularFile(join(root, path))) {
+    const kind = await classifyCandidate(join(root, path));
+    if (kind === "file") {
       notes.push({ path, message: `${path} exists on disk but nobody tracks it in harness.json; run agpm track ${path}` });
+    } else if (kind === "symlink") {
+      notes.push({ path, message: symlinkMessage(path) });
     }
   }
   const settingsAbs = join(root, SETTINGS_CANDIDATE);
-  if ((await isRegularFile(settingsAbs)) && (await settingsNeedsTracking(settingsAbs))) {
+  const settingsKind = await classifyCandidate(settingsAbs);
+  if (settingsKind === "file" && (await settingsNeedsTracking(settingsAbs))) {
     notes.push({
       path: SETTINGS_CANDIDATE,
       message: `${SETTINGS_CANDIDATE} contains hooks but nobody tracks it in harness.json; run agpm track ${SETTINGS_CANDIDATE}`,
     });
+  } else if (settingsKind === "symlink") {
+    notes.push({ path: SETTINGS_CANDIDATE, message: symlinkMessage(SETTINGS_CANDIDATE) });
   }
   return notes;
 }
 
-async function isRegularFile(abs: string): Promise<boolean> {
+function symlinkMessage(path: string): string {
+  return `${path} is a symlink; agpm tracks regular files only; replace it with a regular file to approve it`;
+}
+
+type CandidateKind = "file" | "symlink" | "other";
+
+async function classifyCandidate(abs: string): Promise<CandidateKind> {
+  let stats;
   try {
-    return (await lstat(abs)).isFile();
+    stats = await lstat(abs);
   } catch {
-    return false;
+    return "other";
   }
+  if (stats.isSymbolicLink()) return "symlink";
+  if (stats.isFile()) return "file";
+  return "other";
 }
 
 async function settingsNeedsTracking(abs: string): Promise<boolean> {
