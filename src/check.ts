@@ -1,5 +1,6 @@
+import { checkTrackedFiles } from "./trackedFiles.js";
 import { parentApproval } from "./extends.js";
-import { KINDS, type CheckResult, type Finding, type Kind, type Lock, type Manifest, type ScanResult, type ScannedUnit } from "./types.js";
+import { KINDS, type CheckResult, type Finding, type Kind, type Lock, type LockFileEntry, type Manifest, type ScanResult, type ScannedUnit, type TrackedInput } from "./types.js";
 
 export function unitsByName(scan: ScanResult, kind: Kind): Map<string, ScannedUnit> {
   return new Map(scan.units.filter((u) => u.kind === kind).map((u) => [u.name, u]));
@@ -13,7 +14,13 @@ export interface CheckOptions {
   strict?: boolean;
 }
 
-export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult, options: CheckOptions = {}): CheckResult {
+export function runCheck(
+  manifest: Manifest,
+  lock: Lock,
+  scan: ScanResult,
+  options: CheckOptions = {},
+  tracked?: TrackedInput,
+): CheckResult {
   const findings: Finding[] = [];
   if (manifest.extends !== lock.extends) {
     findings.push({
@@ -66,6 +73,21 @@ export function runCheck(manifest: Manifest, lock: Lock, scan: ScanResult, optio
           message: `${kind}/${name} exists on disk but nobody approved it in harness.json`,
         });
       }
+    }
+  }
+  if (tracked !== undefined) {
+    const declared = manifest.files ?? (Object.create(null) as Record<string, string>);
+    const lockFiles = lock.files ?? (Object.create(null) as Record<string, LockFileEntry>);
+    findings.push(...checkTrackedFiles(declared, lockFiles, tracked.scan));
+    for (const note of tracked.candidates) {
+      if (Object.hasOwn(declared, note.path)) continue;
+      findings.push({
+        level: options.strict === true ? "fail" : "warn",
+        kind: "files",
+        name: note.path,
+        code: "unlisted",
+        message: note.message,
+      });
     }
   }
   return { findings, exitCode: findings.some((f) => f.level === "fail") ? 1 : 0 };

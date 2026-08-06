@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.js";
 import { emptyLock } from "../src/lock.js";
 import { sha256 } from "../src/hash.js";
-import type { Kind, Manifest, ScanResult } from "../src/types.js";
+import type { Kind, Manifest, ScanResult, TrackedInput } from "../src/types.js";
 
 const manifest = (skills: Record<string, string>): Manifest => ({
   version: 1, skills, agents: {}, commands: {},
@@ -201,6 +201,54 @@ describe("runCheck strict", () => {
 
   it("changes nothing on a clean repo", () => {
     const r = runCheck(manifest({ a: "local" }), lockWith("a", "x"), scanWith("a", "x"), { strict: true });
+    expect(r.findings).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+});
+
+describe("runCheck tracked files", () => {
+  const H = sha256("x");
+  const note = (path: string): { path: string; message: string } => ({
+    path,
+    message: `${path} exists on disk but nobody tracks it in harness.json; run agpm track ${path}`,
+  });
+
+  it("merges tracked-file findings and candidate warnings", () => {
+    const m = { ...manifest({}), files: { "CLAUDE.md": "local" } };
+    const lock = emptyLock();
+    lock.files = { "CLAUDE.md": { source: "local", sha256: H } };
+    const tracked: TrackedInput = {
+      scan: { "CLAUDE.md": { status: "file", sha256: sha256("CHANGED") } },
+      candidates: [note(".mcp.json")],
+    };
+    const r = runCheck(m, lock, { units: [] }, {}, tracked);
+    expect(r.findings).toEqual([
+      expect.objectContaining({ kind: "files", name: "CLAUDE.md", code: "drifted", level: "fail" }),
+      expect.objectContaining({ kind: "files", name: ".mcp.json", code: "unlisted", level: "warn" }),
+    ]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("promotes candidate warnings to fail under strict", () => {
+    const tracked: TrackedInput = { scan: {}, candidates: [note("CLAUDE.md")] };
+    const r = runCheck(manifest({}), emptyLock(), { units: [] }, { strict: true }, tracked);
+    expect(r.findings[0]).toMatchObject({ level: "fail", code: "unlisted", kind: "files" });
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("skips candidate warnings for already-tracked paths", () => {
+    const m = { ...manifest({}), files: { "CLAUDE.md": "local" } };
+    const lock = emptyLock();
+    lock.files = { "CLAUDE.md": { source: "local", sha256: H } };
+    const tracked: TrackedInput = {
+      scan: { "CLAUDE.md": { status: "file", sha256: H } },
+      candidates: [note("CLAUDE.md")],
+    };
+    expect(runCheck(m, lock, { units: [] }, {}, tracked).findings).toEqual([]);
+  });
+
+  it("behaves exactly as before when no tracked input is given", () => {
+    const r = runCheck(manifest({}), emptyLock(), { units: [] });
     expect(r.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
   });
