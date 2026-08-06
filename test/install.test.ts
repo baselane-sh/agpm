@@ -227,6 +227,23 @@ describe("runInstall: pack expansion", () => {
     );
     await expect(stat(join(root, ".claude/skills/x"))).rejects.toThrow();
   });
+
+  it("does not echo a hostile pack member ref key in the error message", async () => {
+    const root = await makeRepo(baseRepo({ ".claude/skills/.gitkeep": "" }));
+    const registry = new FakeRegistry();
+    // FakeRegistry hands manifests straight through, bypassing registry.ts's own
+    // response validation, so this exercises install.ts's own defense-in-depth check.
+    registry.addPack("acme", "hostile-pack", "1.0.0", { "not-a-ref\nInjected: header": "1.0.0" });
+
+    let caught: Error | undefined;
+    try {
+      await runInstall(root, "@acme/hostile-pack@1.0.0", registry.client());
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(AgpmError);
+    expect(caught!.message).not.toContain("Injected");
+  });
 });
 
 describe("runInstall: version resolution", () => {

@@ -208,6 +208,80 @@ describe("makeRegistryClient response shape validation", () => {
     const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
     await expect(client.whoami()).rejects.toThrow(/^registry error bad_response: /);
   });
+
+  it("rejects package info whose latest field is not a valid version, without echoing it", async () => {
+    const { fetchImpl } = makeFetchStub([
+      jsonResponse(200, {
+        name: "@acme/foo",
+        kind: "skill",
+        latest: "not-a-version\nInjected: header",
+        versions: ["1.0.0"],
+      }),
+    ]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    let caught: Error | undefined;
+    try {
+      await client.getPackageInfo("acme", "foo");
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(AgpmError);
+    expect(caught!.message).toMatch(/^registry error bad_response: /);
+    expect(caught!.message).not.toContain("Injected");
+  });
+
+  it("rejects package info whose versions array has an invalid entry, without echoing it", async () => {
+    const { fetchImpl } = makeFetchStub([
+      jsonResponse(200, {
+        name: "@acme/foo",
+        kind: "skill",
+        latest: "1.0.0",
+        versions: ["1.0.0", "totally-bogus\ninjected"],
+      }),
+    ]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    let caught: Error | undefined;
+    try {
+      await client.getPackageInfo("acme", "foo");
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(AgpmError);
+    expect(caught!.message).toMatch(/^registry error bad_response: /);
+    expect(caught!.message).not.toContain("injected");
+  });
+
+  it("rejects a pack manifest whose skills map has an invalid member ref key, without echoing it", async () => {
+    const body = packManifestBody() as Record<string, unknown>;
+    body["skills"] = { "not-a-valid-ref\nInjected: header": "1.0.0" };
+    const { fetchImpl } = makeFetchStub([jsonResponse(200, body)]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    let caught: Error | undefined;
+    try {
+      await client.getVersionManifest("acme", "frontend-baseline", "3.0.0");
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(AgpmError);
+    expect(caught!.message).toMatch(/^registry error bad_response: /);
+    expect(caught!.message).not.toContain("Injected");
+  });
+
+  it("rejects a pack manifest whose skills map has an invalid version value, without echoing it", async () => {
+    const body = packManifestBody() as Record<string, unknown>;
+    body["skills"] = { "@acme/design-review": "not-a-version\ninjected" };
+    const { fetchImpl } = makeFetchStub([jsonResponse(200, body)]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    let caught: Error | undefined;
+    try {
+      await client.getVersionManifest("acme", "frontend-baseline", "3.0.0");
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(AgpmError);
+    expect(caught!.message).toMatch(/^registry error bad_response: /);
+    expect(caught!.message).not.toContain("injected");
+  });
 });
 
 describe("makeRegistryClient happy paths", () => {

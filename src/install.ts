@@ -88,7 +88,11 @@ async function resolvePending(
     .map(([memberRef, memberVersion]) => {
       const parsedMember = parseRegistryRef(memberRef);
       if (parsedMember === undefined) {
-        throw new AgpmError(`registry error invalid_package: bad pack member ref "${memberRef}"`);
+        // Defense in depth: makeRegistryClient's own response validation already rejects
+        // an invalid member ref key before it reaches here, so this should be unreachable
+        // via the real client. Never echo the raw key regardless, since a RegistryClient
+        // implementation is not guaranteed to have validated it.
+        throw new AgpmError(`registry error invalid_package: pack manifest has an invalid member ref`);
       }
       return { org: parsedMember.org, name: parsedMember.name, version: memberVersion };
     })

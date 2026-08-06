@@ -6,6 +6,7 @@
 
 import { Buffer } from "node:buffer";
 import { AgpmError } from "./errors.js";
+import { parseRegistryRef, VERSION_RE } from "./registryRef.js";
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 
@@ -180,6 +181,12 @@ function requireSha256(obj: Record<string, unknown>, field: string): string {
   return value;
 }
 
+function requireVersion(obj: Record<string, unknown>, field: string): string {
+  const value = requireString(obj, field);
+  if (!VERSION_RE.test(value)) bad(`field "${field}" is not a valid semantic version`);
+  return value;
+}
+
 function requireKind(obj: Record<string, unknown>): "skill" | "pack" {
   const kind = obj["kind"];
   if (kind !== "skill" && kind !== "pack") bad(`field "kind" is not "skill" or "pack"`);
@@ -190,12 +197,16 @@ function validatePackageInfo(body: unknown): PackageInfo {
   const obj = requireObject(body, "package info response");
   const name = requireString(obj, "name");
   const kind = requireKind(obj);
-  const latest = requireString(obj, "latest");
+  const latest = requireVersion(obj, "latest");
   const versionsRaw = obj["versions"];
   if (!Array.isArray(versionsRaw) || !versionsRaw.every((entry) => typeof entry === "string")) {
     bad(`field "versions" is not an array of strings`);
   }
-  return { name, kind, latest, versions: versionsRaw as string[] };
+  const versions = versionsRaw as string[];
+  for (let i = 0; i < versions.length; i++) {
+    if (!VERSION_RE.test(versions[i]!)) bad(`field "versions[${i}]" is not a valid semantic version`);
+  }
+  return { name, kind, latest, versions };
 }
 
 function validateVersionManifest(body: unknown): VersionManifest {
@@ -228,7 +239,12 @@ function validateSkillsMap(obj: Record<string, unknown>): Record<string, string>
   }
   const skills: Record<string, string> = Object.create(null);
   for (const [memberRef, version] of Object.entries(skillsRaw as Record<string, unknown>)) {
-    if (typeof version !== "string") bad(`field "skills.${memberRef}" is not a string`);
+    if (parseRegistryRef(memberRef) === undefined) {
+      bad(`field "skills" has a key that is not a valid @org/name ref`);
+    }
+    if (typeof version !== "string" || !VERSION_RE.test(version)) {
+      bad(`field "skills.${memberRef}" is not a valid semantic version`);
+    }
     skills[memberRef] = version;
   }
   return skills;
