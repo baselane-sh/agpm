@@ -86,7 +86,9 @@ All behavior follows the protocol spec; this section fixes the implementation ch
   On success: 201 with the stored manifest, one `audit_log` publish row. First publish
   creates the package row. Visibility defaults to `private`; the server accepts an
   optional `visibility` manifest field on first publish only and rejects it afterwards
-  as `invalid_request`.
+  as `invalid_request`. The agpm CLI gains a `--public` flag on `agpm publish` that sets
+  `"visibility": "public"` in the publish manifest. That flag ships in the agpm repo
+  before this app's end to end tests, which use it.
 - `GET /v1/whoami`: resolves the bearer token to `{ user, orgs: [{ org, role }] }`.
 
 Validation logic (name rules, semver, description rule, tar entry checks) lives in
