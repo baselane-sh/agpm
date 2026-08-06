@@ -1,11 +1,12 @@
 import { AgpmError } from "./errors.js";
 import { isRegistryProvenance } from "./registryRef.js";
+import { inManagedRoot, isRepoRelative } from "./trackedFiles.js";
 import { KINDS, type ExtendsRef, type Kind, type Manifest } from "./types.js";
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PROVENANCE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
 const EXTENDS_RE = /^github:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)@([^\s@]+)$/;
-const TOP_KEYS = new Set(["version", "extends", ...KINDS]);
+const TOP_KEYS = new Set(["version", "extends", ...KINDS, "files"]);
 
 // Single source of truth for the "github:owner/repo@ref" extends format, shared by
 // parseManifest, parseLock, and parseExtends. Rejects "." and ".." owner/repo segments
@@ -41,7 +42,7 @@ export function parseManifest(text: string, filePath: string): Manifest {
   const obj = raw as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     if (!TOP_KEYS.has(key)) {
-      throw new AgpmError(`${filePath}: unknown key "${key}" (allowed: version, extends, skills, agents, commands)`);
+      throw new AgpmError(`${filePath}: unknown key "${key}" (allowed: version, extends, skills, agents, commands, files)`);
     }
   }
   if (obj["version"] !== 1) {
@@ -58,7 +59,13 @@ export function parseManifest(text: string, filePath: string): Manifest {
   for (const kind of KINDS) {
     sections[kind] = parseSection(obj[kind], kind, filePath);
   }
-  return { version: 1, ...(ext === undefined ? {} : { extends: ext }), ...sections };
+  const files = parseFiles(obj["files"], filePath);
+  return {
+    version: 1,
+    ...(ext === undefined ? {} : { extends: ext }),
+    ...sections,
+    ...(files === undefined ? {} : { files }),
+  };
 }
 
 export function isValidName(name: string): boolean {
@@ -85,6 +92,13 @@ export function serializeManifest(manifest: Manifest): string {
     }
     out[kind] = section;
   }
+  if (manifest.files !== undefined && Object.keys(manifest.files).length > 0) {
+    const files: Record<string, string> = Object.create(null);
+    for (const path of Object.keys(manifest.files).sort()) {
+      files[path] = manifest.files[path]!;
+    }
+    out["files"] = files;
+  }
   return JSON.stringify(out, null, 2) + "\n";
 }
 
@@ -104,6 +118,33 @@ function parseSection(raw: unknown, kind: Kind, filePath: string): Record<string
       );
     }
     out[name] = value;
+  }
+  return out;
+}
+
+function parseFiles(raw: unknown, filePath: string): Record<string, string> | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new AgpmError(`${filePath}: "files" must be an object of path to provenance`);
+  }
+  const entries = Object.entries(raw);
+  if (entries.length === 0) return undefined;
+  const out: Record<string, string> = Object.create(null);
+  for (const [path, value] of entries) {
+    if (!isRepoRelative(path)) {
+      throw new AgpmError(
+        `${filePath}: bad files path "${path}" (repo-relative, forward slashes, no "." or ".." segments)`,
+      );
+    }
+    if (inManagedRoot(path)) {
+      throw new AgpmError(
+        `${filePath}: files path "${path}" is inside a managed root; skills, agents, and commands are tracked automatically`,
+      );
+    }
+    if (value !== "local") {
+      throw new AgpmError(`${filePath}: files/${path} provenance must be "local"`);
+    }
+    out[path] = value;
   }
   return out;
 }

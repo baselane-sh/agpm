@@ -156,3 +156,44 @@ describe("isProvenance", () => {
     expect(isProvenance("registry:")).toBe(false);
   });
 });
+
+describe("manifest files section", () => {
+  it("parses and round-trips a files section with sorted keys", () => {
+    const text = JSON.stringify({ version: 1, files: { "CLAUDE.md": "local", ".claude/settings.json": "local" } });
+    const m = parseManifest(text, "harness.json");
+    expect(m.files).toEqual({ ".claude/settings.json": "local", "CLAUDE.md": "local" });
+    const out = serializeManifest(m);
+    expect(parseManifest(out, "harness.json").files).toEqual(m.files);
+    expect(out.indexOf('".claude/settings.json"')).toBeLessThan(out.indexOf('"CLAUDE.md"'));
+  });
+
+  it("omits an empty or absent files section when serializing", () => {
+    const fromEmpty = parseManifest(JSON.stringify({ version: 1, files: {} }), "harness.json");
+    expect(fromEmpty.files).toBeUndefined();
+    expect(serializeManifest(fromEmpty)).not.toContain('"files"');
+    expect(serializeManifest(emptyManifest())).not.toContain('"files"');
+  });
+
+  it("rejects a non-local files provenance", () => {
+    const bad = JSON.stringify({ version: 1, files: { "CLAUDE.md": "unknown" } });
+    expect(() => parseManifest(bad, "harness.json")).toThrow(/must be "local"/);
+  });
+
+  it("rejects a files path with dot segments or a leading slash", () => {
+    for (const path of ["../etc/passwd", "/etc/passwd", "a//b", "."]) {
+      const bad = JSON.stringify({ version: 1, files: { [path]: "local" } });
+      expect(() => parseManifest(bad, "harness.json")).toThrow(/bad files path/);
+    }
+  });
+
+  it("rejects a files path inside a managed root", () => {
+    const bad = JSON.stringify({ version: 1, files: { ".claude/skills/foo/SKILL.md": "local" } });
+    expect(() => parseManifest(bad, "harness.json")).toThrow(/managed root/);
+  });
+
+  it("names files in the unknown-key message", () => {
+    expect(() => parseManifest(JSON.stringify({ version: 1, nope: {} }), "harness.json")).toThrow(
+      /allowed: version, extends, skills, agents, commands, files/,
+    );
+  });
+});
