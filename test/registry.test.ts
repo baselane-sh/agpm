@@ -147,6 +147,30 @@ describe("makeRegistryClient error mapping", () => {
       expect((error as Error).message).not.toContain(TOKEN);
     }
   });
+
+  it("redacts the token when a hostile or misbehaving server echoes it back in the error message", async () => {
+    const { fetchImpl } = makeFetchStub([
+      jsonResponse(401, { error: { code: "unauthorized", message: `bad token ${TOKEN} rejected` } }),
+    ]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    await expect(client.whoami()).rejects.toThrow(
+      new AgpmError("registry error unauthorized: bad token <redacted> rejected"),
+    );
+  });
+
+  it("redacts the token when it is echoed back in an unparseable response's statusText", async () => {
+    const { fetchImpl } = makeFetchStub([
+      new Response("<html>error</html>", {
+        status: 500,
+        statusText: `boom ${TOKEN}`,
+        headers: { "content-type": "text/html" },
+      }),
+    ]);
+    const client = makeRegistryClient(BASE_URL, TOKEN, fetchImpl);
+    await expect(client.getPackageInfo("acme", "foo")).rejects.toThrow(
+      new AgpmError(`registry error http_500: boom <redacted>`),
+    );
+  });
 });
 
 describe("makeRegistryClient response shape validation", () => {

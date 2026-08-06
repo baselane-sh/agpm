@@ -5,7 +5,7 @@
 
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { AgpmError } from "./errors.js";
 import { emptyLock, parseLock, serializeLock } from "./lock.js";
@@ -93,6 +93,17 @@ async function resolvePending(
       return { org: parsedMember.org, name: parsedMember.name, version: memberVersion };
     })
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+  const seenByName = new Map<string, { org: string; name: string; version: string }>();
+  for (const member of members) {
+    const prior = seenByName.get(member.name);
+    if (prior !== undefined) {
+      throw new AgpmError(
+        `registry error invalid_package: pack members ${formatRegistryRef(prior)} and ${formatRegistryRef(member)} both resolve to skills/${member.name}`,
+      );
+    }
+    seenByName.set(member.name, member);
+  }
 
   const resolved: ResolvedSkill[] = [];
   for (const member of members) {
@@ -201,9 +212,14 @@ async function checkCollisions(
   }
 }
 
+// Callers write only after their own collision/ownership check has passed, so any
+// existing folder here is the same-provenance entry being replaced; clearing it first
+// keeps a file dropped between versions (or reintroduced by local tampering) from
+// surviving on disk and being re-blessed under the new registry provenance.
 async function writeEntry(cwd: string, roots: string[], entry: InstallEntry): Promise<void> {
   for (const root of roots) {
     const base = join(cwd, root, entry.name);
+    await rm(base, { recursive: true, force: true });
     for (const [relPath, content] of Object.entries(entry.files)) {
       const dest = join(base, relPath);
       await mkdir(dirname(dest), { recursive: true });

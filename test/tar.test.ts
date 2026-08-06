@@ -184,4 +184,14 @@ describe("extractTarball hostile inputs", () => {
     expect(big.length).toBeGreaterThan(TAR_LIMITS.maxCompressed);
     expect(() => extractTarball(big)).toThrow("invalid package: tarball exceeds 10 MiB");
   });
+
+  it("rejects a gzip bomb under the 10 MiB compressed cap that would inflate past 25 MiB", () => {
+    // Highly compressible zeros: well under the 10 MiB compressed cap, but the raw
+    // stream is ~28 MiB, past the 25 MiB extracted limit. This must be caught by
+    // gunzip's own output cap rather than only after full inflation, or a hostile
+    // tarball this shape can exhaust memory before the per-entry size check ever runs.
+    const bomb = gzipSync(Buffer.alloc(28 * 1024 * 1024), { level: 9 });
+    expect(bomb.length).toBeLessThan(TAR_LIMITS.maxCompressed);
+    expect(() => extractTarball(bomb)).toThrow("invalid package: contents exceed 25 MiB");
+  });
 });

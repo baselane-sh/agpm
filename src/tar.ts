@@ -16,6 +16,10 @@ export const TAR_LIMITS = {
   maxFiles: 1000,
 };
 
+// Headroom above maxExtracted for gunzip's own output cap: covers ustar headers, block
+// padding, and the two-block trailer. 2 MiB is ample for 1000 files.
+const TAR_OVERHEAD = 2 * 1024 * 1024;
+
 export function createTarball(files: Record<string, Uint8Array>): Buffer {
   const paths = Object.keys(files).sort();
   for (const path of paths) {
@@ -44,8 +48,11 @@ export function extractTarball(gz: Uint8Array): Record<string, Buffer> {
 
   let tar: Buffer;
   try {
-    tar = gunzipSync(gz);
-  } catch {
+    tar = gunzipSync(gz, { maxOutputLength: TAR_LIMITS.maxExtracted + TAR_OVERHEAD });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE") {
+      throw new AgpmError(`invalid package: contents exceed 25 MiB`);
+    }
     throw new AgpmError(`invalid package: not a gzip tarball`);
   }
 

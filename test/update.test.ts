@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgpmError } from "../src/errors.js";
@@ -140,6 +140,29 @@ describe("runUpdate: named entry, direct registry install", () => {
     const manifestPath = join(root, "harness.json");
     const manifest = parseManifest(await readFile(manifestPath, "utf8"), manifestPath);
     expect(manifest.skills["tdd-cycle"]).toBe("registry:@acme/tdd-cycle@1.2.0");
+  });
+
+  it("removes a file the old version had that the new version dropped", async () => {
+    const root = await makeRepo(
+      baseRepo({
+        "harness.json": JSON.stringify({
+          version: 1,
+          skills: { "tdd-cycle": "registry:@acme/tdd-cycle@1.0.0" },
+        }),
+        ".claude/skills/tdd-cycle/SKILL.md": "old\n",
+      }),
+    );
+    const registry = new FakeRegistry();
+    registry.addSkill({ org: "acme", name: "tdd-cycle", version: "1.0.0", content: "old\n" });
+    registry.addSkill({ org: "acme", name: "tdd-cycle", version: "1.2.0", content: "new\n" });
+    // A file that existed under 1.0.0 but is not part of what 1.2.0 writes; it must not
+    // survive the update and be re-blessed under the new registry provenance.
+    await writeFile(join(root, ".claude/skills/tdd-cycle/stale.md"), "leftover\n", "utf8");
+
+    await runUpdate(root, "tdd-cycle", registry.client());
+
+    await expect(stat(join(root, ".claude/skills/tdd-cycle/stale.md"))).rejects.toThrow();
+    expect(await readFile(join(root, ".claude/skills/tdd-cycle/SKILL.md"), "utf8")).toBe("new\n");
   });
 
   it("reports current when already at latest, with no reminder line", async () => {

@@ -71,19 +71,26 @@ export function makeRegistryClient(baseUrl: string, token: string | undefined, f
     return new URL(path, base);
   }
 
+  // Defense in depth against a misbehaving or hostile server echoing the Authorization
+  // header back in an error body: strip the configured token before it ever reaches
+  // AgpmError text (protocol spec section 7).
+  function redact(text: string): string {
+    return token !== undefined ? text.split(token).join("<redacted>") : text;
+  }
+
   async function throwForErrorResponse(response: Response): Promise<never> {
     let body: unknown;
     try {
       body = await response.json();
     } catch {
-      throw new AgpmError(`registry error http_${response.status}: ${response.statusText}`);
+      throw new AgpmError(`registry error http_${response.status}: ${redact(response.statusText)}`);
     }
     const code = errorField(body, "code");
     const message = errorField(body, "message");
     if (code === undefined || message === undefined) {
-      throw new AgpmError(`registry error http_${response.status}: ${response.statusText}`);
+      throw new AgpmError(`registry error http_${response.status}: ${redact(response.statusText)}`);
     }
-    throw new AgpmError(`registry error ${code}: ${message}`);
+    throw new AgpmError(`registry error ${code}: ${redact(message)}`);
   }
 
   function errorField(body: unknown, field: "code" | "message"): string | undefined {

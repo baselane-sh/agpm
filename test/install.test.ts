@@ -209,6 +209,24 @@ describe("runInstall: pack expansion", () => {
       new AgpmError("registry error invalid_package: pack members must be skills"),
     );
   });
+
+  it("rejects a pack whose members resolve to the same folder name", async () => {
+    const root = await makeRepo(baseRepo({ ".claude/skills/.gitkeep": "" }));
+    const registry = new FakeRegistry();
+    registry.addSkill({ org: "a", name: "x", version: "1.0.0", files: { "SKILL.md": "a\n" } });
+    registry.addSkill({ org: "b", name: "x", version: "2.0.0", files: { "SKILL.md": "b\n" } });
+    registry.addPack("acme", "colliding-pack", "1.0.0", {
+      "@a/x": "1.0.0",
+      "@b/x": "2.0.0",
+    });
+
+    await expect(runInstall(root, "@acme/colliding-pack@1.0.0", registry.client())).rejects.toThrow(
+      new AgpmError(
+        "registry error invalid_package: pack members @a/x@1.0.0 and @b/x@2.0.0 both resolve to skills/x",
+      ),
+    );
+    await expect(stat(join(root, ".claude/skills/x"))).rejects.toThrow();
+  });
 });
 
 describe("runInstall: version resolution", () => {
@@ -330,6 +348,33 @@ describe("runInstall: collisions", () => {
 
     expect(lines[0]).toBe("installed skills/tdd-cycle (registry:@acme/tdd-cycle@1.0.0)");
     expect(await readFile(join(root, ".claude/skills/tdd-cycle/SKILL.md"), "utf8")).toBe("second\n");
+  });
+
+  it("removes a file dropped from the tarball on a same-provenance reinstall", async () => {
+    const root = await makeRepo(baseRepo({ ".claude/skills/.gitkeep": "" }));
+    const registry = new FakeRegistry();
+    registry.addSkill({
+      org: "acme",
+      name: "tdd-cycle",
+      version: "1.0.0",
+      files: { "SKILL.md": "keep\n", "extra.md": "stale\n" },
+    });
+    await runInstall(root, "@acme/tdd-cycle@1.0.0", registry.client());
+    expect(await readFile(join(root, ".claude/skills/tdd-cycle/extra.md"), "utf8")).toBe("stale\n");
+
+    // Same version republished without extra.md (e.g. a repair reinstall over a locally
+    // tampered folder). The stale file must not survive and get re-blessed under the
+    // new provenance write.
+    registry.addSkill({
+      org: "acme",
+      name: "tdd-cycle",
+      version: "1.0.0",
+      files: { "SKILL.md": "keep\n" },
+    });
+    await runInstall(root, "@acme/tdd-cycle@1.0.0", registry.client());
+
+    await expect(stat(join(root, ".claude/skills/tdd-cycle/extra.md"))).rejects.toThrow();
+    expect(await readFile(join(root, ".claude/skills/tdd-cycle/SKILL.md"), "utf8")).toBe("keep\n");
   });
 });
 
