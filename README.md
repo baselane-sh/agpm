@@ -50,7 +50,7 @@ Every `install` and `update` prints this reminder:
 
 Installed files are copied, never symlinked: the bytes agpm writes are the exact bytes the registry manifest hashed, and `agpm check` verifies those hashes stay put. `agpm remove <name>` deletes an installed skill and its harness entries; `agpm update [<name>]` re-resolves and replaces a registry-provenance skill with its latest published version.
 
-Publishing needs a token: `agpm publish <folder> @org/name@1.2.0` packs a skill folder (description comes from the first line of `SKILL.md` or `--description "..."`); `agpm publish --pack <file> @org/name@1.2.0` publishes a pack manifest (`{ "description": "...", "skills": { "@org/a": "1.0.0" } }`).
+Publishing needs a token: `agpm publish <folder> @org/name@1.2.0` packs a skill folder (description comes from the first line of `SKILL.md` or `--description "..."`); `agpm publish --pack <file> @org/name@1.2.0` publishes a pack manifest (`{ "description": "...", "skills": { "@org/a": "1.0.0" } }`). Add `--public` on the first publish to make the package public; without it the package starts private.
 
 The registry base URL defaults to `https://registry.baselane.sh`; override it with the `AGPM_REGISTRY` environment variable. Tokens resolve from the `AGPM_TOKEN` environment variable first, then `~/.agpm/credentials` (written by `agpm login`, mode 600). A token is never printed or written anywhere else.
 
