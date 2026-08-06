@@ -1,6 +1,6 @@
 import { AgpmError } from "./errors.js";
 import { isProvenance, isValidName, parseExtendsValue } from "./manifest.js";
-import { KINDS, type Kind, type Lock, type LockEntry } from "./types.js";
+import { KINDS, type Kind, type Lock, type LockEntry, type LockFileEntry } from "./types.js";
 
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
@@ -60,6 +60,25 @@ export function parseLock(text: string, filePath: string): Lock {
       lock[kind][name] = parseEntry(value, `${filePath}: ${kind}/${name}`);
     }
   }
+  const rawFiles = obj["files"];
+  if (rawFiles !== undefined) {
+    if (typeof rawFiles !== "object" || rawFiles === null || Array.isArray(rawFiles)) {
+      throw new AgpmError(`${filePath}: "files" must be an object`);
+    }
+    const entries = Object.entries(rawFiles);
+    if (entries.length > 0) {
+      const out: Record<string, LockFileEntry> = Object.create(null);
+      for (const [path, value] of entries) {
+        if (badPath(path)) {
+          throw new AgpmError(
+            `${filePath}: files key "${path}" must be a clean repo-relative path (no "..", "\\", or leading "/")`,
+          );
+        }
+        out[path] = parseFileEntry(value, `${filePath}: files/${path}`);
+      }
+      lock.files = out;
+    }
+  }
   return lock;
 }
 
@@ -103,6 +122,40 @@ function parseEntry(raw: unknown, where: string): LockEntry {
     outFiles[rel] = hash;
   }
   return { source, dirs: [...(dirs as string[])].sort(), files: outFiles };
+}
+
+function parseFileEntry(raw: unknown, where: string): LockFileEntry {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new AgpmError(`${where}: entry must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  const { source, sha256, files } = obj;
+  if (source !== "local") {
+    throw new AgpmError(`${where}: source must be "local"`);
+  }
+  if ((sha256 === undefined) === (files === undefined)) {
+    throw new AgpmError(`${where}: entry must have exactly one of "sha256" or "files"`);
+  }
+  if (sha256 !== undefined) {
+    if (typeof sha256 !== "string" || !HASH_RE.test(sha256)) {
+      throw new AgpmError(`${where}: sha256 must be "sha256:<64 hex>"`);
+    }
+    return { source: "local", sha256 };
+  }
+  if (typeof files !== "object" || files === null || Array.isArray(files)) {
+    throw new AgpmError(`${where}: files must be an object`);
+  }
+  const outFiles: Record<string, string> = Object.create(null);
+  for (const [rel, hash] of Object.entries(files)) {
+    if (badPath(rel)) {
+      throw new AgpmError(`${where}: files key "${rel}" must be a clean relative path (no "..", "\\", or leading "/")`);
+    }
+    if (typeof hash !== "string" || !HASH_RE.test(hash)) {
+      throw new AgpmError(`${where}: files["${rel}"] must be "sha256:<64 hex>"`);
+    }
+    outFiles[rel] = hash;
+  }
+  return { source: "local", files: outFiles };
 }
 
 function parseExtendsManifest(raw: unknown, filePath: string): Record<Kind, Record<string, string>> {

@@ -157,3 +157,49 @@ describe("extends pin", () => {
     expect(() => parseLock(JSON.stringify(bad), "harness.lock")).toThrow(/extends must look like "github:owner\/repo@ref"/);
   });
 });
+
+describe("lock files section", () => {
+  const H = "sha256:" + "a".repeat(64);
+
+  it("parses and round-trips file and directory entries", () => {
+    const text = JSON.stringify({
+      version: 1,
+      files: {
+        "CLAUDE.md": { source: "local", sha256: H },
+        ".claude/hooks": { source: "local", files: { "guard.sh": H } },
+      },
+    });
+    const lock = parseLock(text, "harness.lock");
+    expect(lock.files!["CLAUDE.md"]).toEqual({ source: "local", sha256: H });
+    expect(lock.files![".claude/hooks"]).toEqual({ source: "local", files: { "guard.sh": H } });
+    expect(parseLock(serializeLock(lock), "harness.lock").files).toEqual(lock.files);
+  });
+
+  it("refuses an entry with both sha256 and files", () => {
+    const text = JSON.stringify({ version: 1, files: { "CLAUDE.md": { source: "local", sha256: H, files: {} } } });
+    expect(() => parseLock(text, "harness.lock")).toThrow(/exactly one of "sha256" or "files"/);
+  });
+
+  it("refuses an entry with neither sha256 nor files", () => {
+    const text = JSON.stringify({ version: 1, files: { "CLAUDE.md": { source: "local" } } });
+    expect(() => parseLock(text, "harness.lock")).toThrow(/exactly one/);
+  });
+
+  it("refuses a non-local source", () => {
+    const text = JSON.stringify({ version: 1, files: { "CLAUDE.md": { source: "unknown", sha256: H } } });
+    expect(() => parseLock(text, "harness.lock")).toThrow(/source must be "local"/);
+  });
+
+  it("refuses a bad hash and a bad path key", () => {
+    const badHash = JSON.stringify({ version: 1, files: { "CLAUDE.md": { source: "local", sha256: "sha256:short" } } });
+    expect(() => parseLock(badHash, "harness.lock")).toThrow(/64 hex/);
+    const badKey = JSON.stringify({ version: 1, files: { "../x": { source: "local", sha256: H } } });
+    expect(() => parseLock(badKey, "harness.lock")).toThrow(/clean repo-relative path/);
+  });
+
+  it("a lock without files stays without files", () => {
+    const lock = parseLock(JSON.stringify({ version: 1 }), "harness.lock");
+    expect(lock.files).toBeUndefined();
+    expect(serializeLock(lock)).not.toContain('"files"');
+  });
+});
