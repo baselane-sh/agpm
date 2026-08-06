@@ -5,7 +5,7 @@ import { emptyManifest } from "../src/manifest.js";
 import { sha256 } from "../src/hash.js";
 import { runCli } from "../src/cli.js";
 import { makeRepo } from "./helpers.js";
-import type { Lock, Manifest, ScanResult } from "../src/types.js";
+import type { Lock, Manifest, ScanResult, TrackedInput } from "../src/types.js";
 
 const scanWith = (name: string, content: string): ScanResult => ({
   units: [{ kind: "skills", name, locations: [{ dir: ".claude/skills", files: { "SKILL.md": sha256(content) } }] }],
@@ -48,6 +48,33 @@ describe("formatAudit", () => {
     const lines = formatAudit({ version: 1, skills: {}, agents: {}, commands: {} }, lock, scanWith("blessed", "x"), []);
     expect(lines[0]).toContain("github:acme/tools/skills/blessed (extends)");
     expect(lines.at(-1)).toContain("0 unapproved");
+  });
+});
+
+describe("formatAudit files rows", () => {
+  const H = sha256("x");
+
+  it("counts files rows in the summary and shows the path as location", () => {
+    const manifest = { ...emptyManifest(), files: { "CLAUDE.md": "local", "AGENTS.md": "local" } };
+    const lock = emptyLock();
+    lock.files = {
+      "CLAUDE.md": { source: "local", sha256: H },
+      "AGENTS.md": { source: "local", sha256: H },
+    };
+    const tracked: TrackedInput = {
+      scan: {
+        "CLAUDE.md": { status: "file", sha256: H },
+        "AGENTS.md": { status: "missing" },
+      },
+      candidates: [{ path: ".mcp.json", message: ".mcp.json exists on disk but nobody tracks it in harness.json; run agpm track .mcp.json" }],
+    };
+    const lines = formatAudit(manifest, lock, { units: [] }, [], tracked);
+    expect(lines).toEqual([
+      `${"files".padEnd(9)} ${".mcp.json".padEnd(30)} ${"unlisted".padEnd(9)} ${"(unapproved)".padEnd(45)} .mcp.json`,
+      `${"files".padEnd(9)} ${"AGENTS.md".padEnd(30)} ${"missing".padEnd(9)} ${"local".padEnd(45)} (not on disk)`,
+      `${"files".padEnd(9)} ${"CLAUDE.md".padEnd(30)} ${"ok".padEnd(9)} ${"local".padEnd(45)} CLAUDE.md`,
+      "audit: 3 entries, 1 out of approval, 1 unapproved",
+    ]);
   });
 });
 

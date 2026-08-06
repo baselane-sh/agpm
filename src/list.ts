@@ -1,6 +1,6 @@
 import { nameUnion, runCheck, unitsByName } from "./check.js";
 import { parentApproval } from "./extends.js";
-import { KINDS, type FindingCode, type Lock, type Manifest, type ScanResult } from "./types.js";
+import { KINDS, type FindingCode, type Lock, type Manifest, type ScanResult, type TrackedInput } from "./types.js";
 
 const DISPLAY: Record<FindingCode, string> = {
   missing: "missing",
@@ -10,8 +10,8 @@ const DISPLAY: Record<FindingCode, string> = {
   unlisted: "unlisted",
 };
 
-export function formatList(manifest: Manifest, lock: Lock, scan: ScanResult): string[] {
-  const { findings } = runCheck(manifest, lock, scan);
+export function formatList(manifest: Manifest, lock: Lock, scan: ScanResult, tracked?: TrackedInput): string[] {
+  const { findings } = runCheck(manifest, lock, scan, {}, tracked);
   const lines: string[] = [];
   for (const kind of KINDS) {
     const units = unitsByName(scan, kind);
@@ -25,6 +25,23 @@ export function formatList(manifest: Manifest, lock: Lock, scan: ScanResult): st
         "unknown";
       lines.push(`${kind.padEnd(9)} ${name.padEnd(30)} ${status.padEnd(9)} ${source}`);
     }
+  }
+  const filePaths = [
+    ...new Set([
+      ...Object.keys(manifest.files ?? {}),
+      ...Object.keys(lock.files ?? {}),
+      ...findings.filter((f) => f.kind === "files").map((f) => f.name),
+    ]),
+  ].sort();
+  for (const path of filePaths) {
+    const finding = findings.find((f) => f.kind === "files" && f.name === path);
+    const status = finding === undefined ? "ok" : DISPLAY[finding.code];
+    const source = Object.hasOwn(manifest.files ?? {}, path)
+      ? manifest.files![path]!
+      : Object.hasOwn(lock.files ?? {}, path)
+        ? lock.files![path]!.source
+        : "unknown";
+    lines.push(`${"files".padEnd(9)} ${path.padEnd(30)} ${status.padEnd(9)} ${source}`);
   }
   return lines;
 }

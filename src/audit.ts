@@ -1,11 +1,11 @@
 import { nameUnion, runCheck, unitsByName } from "./check.js";
 import { parentApproval } from "./extends.js";
-import { KINDS, type Lock, type Manifest, type ScanResult } from "./types.js";
+import { KINDS, type Lock, type Manifest, type ScanResult, type TrackedInput } from "./types.js";
 
 const OUT_OF_APPROVAL = new Set(["missing", "drifted", "split", "unsynced"]);
 
-export function formatAudit(manifest: Manifest, lock: Lock, scan: ScanResult, notes: string[]): string[] {
-  const { findings } = runCheck(manifest, lock, scan);
+export function formatAudit(manifest: Manifest, lock: Lock, scan: ScanResult, notes: string[], tracked?: TrackedInput): string[] {
+  const { findings } = runCheck(manifest, lock, scan, {}, tracked);
   const lines: string[] = [];
   let total = 0;
   let outOfApproval = 0;
@@ -31,6 +31,23 @@ export function formatAudit(manifest: Manifest, lock: Lock, scan: ScanResult, no
         : unit.locations.map((l) => l.dir).sort().join(" + ");
       lines.push(`${kind.padEnd(9)} ${name.padEnd(30)} ${state.padEnd(9)} ${source.padEnd(45)} ${where}`);
     }
+  }
+  const filePaths = [
+    ...new Set([
+      ...Object.keys(manifest.files ?? {}),
+      ...Object.keys(lock.files ?? {}),
+      ...findings.filter((f) => f.kind === "files").map((f) => f.name),
+    ]),
+  ].sort();
+  for (const path of filePaths) {
+    total++;
+    const finding = findings.find((f) => f.kind === "files" && f.name === path);
+    const state = finding === undefined ? "ok" : finding.code;
+    if (OUT_OF_APPROVAL.has(state)) outOfApproval++;
+    if (state === "unlisted") unapproved++;
+    const source = Object.hasOwn(manifest.files ?? {}, path) ? manifest.files![path]! : "(unapproved)";
+    const where = state === "missing" ? "(not on disk)" : path;
+    lines.push(`${"files".padEnd(9)} ${path.padEnd(30)} ${state.padEnd(9)} ${source.padEnd(45)} ${where}`);
   }
   for (const note of notes) lines.push(`note: ${note}`);
   lines.push(`audit: ${total} entries, ${outOfApproval} out of approval, ${unapproved} unapproved`);
